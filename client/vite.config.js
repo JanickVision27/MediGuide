@@ -10,14 +10,14 @@ export default defineConfig({
     port: 5173,
     // Accept requests forwarded from a tunnel/preview hostname.
     allowedHosts: true,
-    // When the backend lands, uncomment to proxy API calls and keep the
+    // Proxy API calls to the Node backend and keep the
     // browser on relative URLs (never call localhost from browser code).
-    // proxy: {
-    //   '/api': {
-    //     target: 'http://localhost:8000',
-    //     changeOrigin: true,
-    //   },
-    // },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000', // Pointed to your Node backend port
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: '0.0.0.0',

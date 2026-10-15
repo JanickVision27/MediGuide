@@ -1,0 +1,24 @@
+{
+  "name": "mediguide-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MediGuide healthcare assistance platform - React frontend",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.3.7"
+  }
+}

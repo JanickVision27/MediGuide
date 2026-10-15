@@ -10,14 +10,21 @@ let bookContext = '';
 
 async function loadMedicalBook() {
   try {
-    const pdfParse = (await import('pdf-parse')).default; // Workaround for older package
-    const dataBuffer = fs.readFileSync(path.join(__dirname, 'server\src\Medical_book.pdf'));
-    const pdfData = await pdfParse(dataBuffer);
+    const { PDFParse } = await import('pdf-parse');
+    const dataBuffer = fs.readFileSync(
+      path.join(__dirname, '..', 'Medical_book.pdf')
+    );
+    const parser = new PDFParse({ data: dataBuffer });
+    const pdfData = await parser.getText();
+    await parser.destroy();
 
     bookContext = pdfData.text.substring(0, 12000);
     console.log('Medical Book has loaded successfully.');
   } catch (error) {
-    console.log('Unfortunatey the Medical_book.pdf not found. Running general AI mode.');
+    console.error(
+      'Failed to load Medical_book.pdf. Running general AI mode:',
+      error.message
+    );
   }
 }
 

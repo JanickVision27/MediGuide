@@ -1,14 +1,18 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate
+} from "react-router-dom";
 
-import Layout from './components/layout/Layout.jsx'
-import Home from './pages/Home.jsx'
-import Profile from './pages/Profile.jsx'
-import Prescriptions from './pages/Prescriptions.jsx'
-import Appointments from './pages/Appointments.jsx'
-import ChatUI from './pages/ChatUI.jsx'
-import Login from './pages/Login.jsx'
-import Register from './pages/Register.jsx'
-
+import Layout from "./components/layout/Layout.jsx";
+import Home from "./pages/Home.jsx";
+import Profile from "./pages/Profile.jsx";
+import Prescriptions from "./pages/Prescriptions.jsx";
+import Appointments from "./pages/Appointments.jsx";
+import ChatUI from "./pages/ChatUI.jsx";
+import Login from "./pages/Login.jsx";
+import Register from "./pages/Register.jsx";
 /**
  * Application router.
  *
@@ -25,19 +29,39 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Shared layout: sidebar and page content */}
         <Route element={<Layout />}>
+          {/* Home page */}
           <Route index element={<Home />} />
+
+          {/* Patient profile page */}
           <Route path="profile" element={<Profile />} />
-          <Route path="prescriptions" element={<Prescriptions />} />
-          <Route path="appointments" element={<Appointments />} />
+
+          {/* Healthcare pages */}
+          <Route
+            path="prescriptions"
+            element={<Prescriptions />}
+          />
+
+          <Route
+            path="appointments"
+            element={<Appointments />}
+          />
+
           <Route path="chat" element={<ChatUI />} />
+
+          {/* Authentication pages */}
           <Route path="login" element={<Login />} />
+
           <Route path="register" element={<Register />} />
 
-          {/* Unknown URL -> send the user home instead of showing a blank screen */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Redirect unknown URLs to Home */}
+          <Route
+            path="*"
+            element={<Navigate to="/" replace />}
+          />
         </Route>
       </Routes>
     </BrowserRouter>
-  )
+  );
 }

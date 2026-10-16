@@ -19,6 +19,7 @@ import {
 const NAV_ITEMS = [
   { to: '/profile', label: 'Profile', Icon: UserIcon },
   { to: '/prescriptions', label: 'Prescriptions', Icon: PillIcon },
+  { to: '/medicines', label: 'Medicines', Icon: PillIcon },
   { to: '/appointments', label: 'Appointments', Icon: CalendarIcon },
   { to: '/chat', label: 'ChatUI', Icon: ChatIcon },
 ]

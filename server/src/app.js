@@ -1,4 +1,4 @@
-﻿import dotenv from "dotenv";
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import chatRoutes from "./routes/chatRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import medicineRoutes from "./routes/medicineRoutes.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +18,7 @@ dotenv.config({
 
 const app = express();
 const port = process.env.PORT || 5000;
+const DB_RETRY_MS = 15000;
 
 // Middleware
 app.use(cors());
@@ -25,6 +27,7 @@ app.use(express.json());
 // API routes
 app.use("/api", chatRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/medicines", medicineRoutes);
 
 // Health-check route
 app.get("/health", (_req, res) => {
@@ -38,46 +41,67 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// Connect to MongoDB and start the server
-async function startServer() {
+/**
+ * Connect to MongoDB without ever stopping the process.
+ * If the database is unreachable the API keeps serving; database-backed routes
+ * answer 503 and the connection is retried in the background.
+ */
+async function connectToDatabase() {
+  const mongoUri = process.env.MONGODB_URI?.trim();
+
+  if (!mongoUri) {
+    console.warn(
+      "MONGODB_URI is missing from the root .env file. Database features are disabled."
+    );
+    return;
+  }
+
+  // Check the URI format without printing credentials
+  if (
+    !mongoUri.startsWith("mongodb://") &&
+    !mongoUri.startsWith("mongodb+srv://")
+  ) {
+    console.error(
+      "Invalid MongoDB URI format. It must start with mongodb:// or mongodb+srv://. Database features are disabled."
+    );
+    return;
+  }
+
+  if (/\s/.test(mongoUri)) {
+    console.error(
+      "MONGODB_URI contains whitespace. Check your .env file. Database features are disabled."
+    );
+    return;
+  }
+
   try {
-    const mongoUri = process.env.MONGODB_URI?.trim();
-
-    if (!mongoUri) {
-      throw new Error(
-        "MONGODB_URI is missing from the root .env file."
-      );
-    }
-
-    // Check the URI format without printing credentials
-    if (
-      !mongoUri.startsWith("mongodb://") &&
-      !mongoUri.startsWith("mongodb+srv://")
-    ) {
-      throw new Error(
-        "Invalid MongoDB URI format. It must start with mongodb:// or mongodb+srv://."
-      );
-    }
-
-    if (/\s/.test(mongoUri)) {
-      throw new Error(
-        "MONGODB_URI contains whitespace. Check your .env file."
-      );
-    }
-
-    await mongoose.connect(mongoUri);
-
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
     console.log("MongoDB connected successfully");
-
-    app.listen(port, () => {
-      console.log(
-        `MediGuide API listening on http://localhost:${port}`
-      );
-    });
   } catch (error) {
-    console.error("Failed to start MediGuide API:", error.message);
-    process.exit(1);
+    console.error(
+      `MongoDB unavailable (${error.message}). Retrying in ${DB_RETRY_MS / 1000}s.`
+    );
+    setTimeout(connectToDatabase, DB_RETRY_MS);
   }
 }
 
-startServer();
+mongoose.connection.on("disconnected", () => {
+  console.warn("MongoDB disconnected. Database routes will return 503 until it reconnects.");
+});
+mongoose.connection.on("reconnected", () => {
+  console.log("MongoDB reconnected");
+});
+mongoose.connection.on("error", (error) => {
+  console.error("MongoDB connection error:", error.message);
+});
+
+// Keep the process alive no matter what the database does.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason?.message || reason);
+});
+
+app.listen(port, () => {
+  console.log(`MediGuide API listening on http://localhost:${port}`);
+});
+
+void connectToDatabase();

@@ -19,6 +19,7 @@ export default function FallbackMedicineCard({ name }) {
     try {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: `What is ${name} used for and what are its common side effects?`,

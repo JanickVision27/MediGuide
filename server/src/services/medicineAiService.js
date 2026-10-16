@@ -2,7 +2,8 @@ import axios from "axios";
 import { z } from "zod";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = process.env.GROQ_AI_LOOKUP_MODEL?.trim() || "llama-3.1-8b-instant";
+const getModel = () =>
+  process.env.GROQ_AI_LOOKUP_MODEL?.trim() || "openai/gpt-oss-120b";
 const TIMEOUT_MS = 15000;
 const DEFAULT_DISCLAIMER =
   "AI-generated information. Consult a licensed healthcare professional before taking any medication.";
@@ -10,7 +11,9 @@ const DEFAULT_DISCLAIMER =
 export const AI_LOOKUP_SYSTEM_PROMPT = `You are a medicine information assistant. Provide factual, publicly available information only.
 Never diagnose, prescribe, or recommend specific dosages.
 Always include a safety disclaimer: consult a licensed healthcare professional before taking any medication.
-Return ONLY valid JSON with this shape: { "name", "genericName", "uses": [], "sideEffects": [], "precautions": [], "therapeuticClass", "isOTC", "disclaimer" }
+Return exactly one JSON object and no markdown, code fences, or prose. Include every property with these types:
+{ "name": "string", "genericName": "string", "uses": ["string"], "sideEffects": ["string"], "precautions": ["string"], "therapeuticClass": "string", "isOTC": false, "disclaimer": "string" }
+Use empty strings and empty arrays for unknown details. Set isOTC to true only when reliable information supports it; otherwise use false.
 If you don't have reliable information about this medicine, return { "error": "not_found" }`;
 
 const medicineInfoSchema = z.object({
@@ -41,6 +44,49 @@ function parseJsonObject(raw) {
   }
 }
 
+/** Recover the expected list fields if a model ever ignores JSON mode. */
+function parseMarkdownFallback(raw, medicineName) {
+  const sections = {
+    uses: /^(?:typical\s+)?uses?\s*:?$/i,
+    sideEffects: /^(?:common\s+)?side effects?\s*:?$/i,
+    precautions: /^(?:important\s+)?precautions?\s*:?$/i,
+  };
+  const lists = { uses: [], sideEffects: [], precautions: [] };
+  let activeList = null;
+
+  for (const rawLine of String(raw ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const heading = line.replace(/^#+\s*/, "").replace(/^\*\*(.*?)\*\*:?$/, "$1").trim();
+    const section = Object.entries(sections).find(([, pattern]) => pattern.test(heading));
+    if (section) {
+      activeList = section[0];
+      continue;
+    }
+    if (!line) continue;
+
+    const bullet = line.match(/^(?:[-*•]\s+|\d+[.)]\s+)(.+)$/);
+    if (activeList && bullet) {
+      const item = bullet[1].replace(/\*\*/g, "").trim();
+      if (item) lists[activeList].push(item);
+    } else if (!/^\*\*/.test(line) && !/^#+/.test(line)) {
+      activeList = null;
+    }
+  }
+
+  if (!lists.uses.length && !lists.sideEffects.length && !lists.precautions.length) {
+    return null;
+  }
+
+  return {
+    name: medicineName,
+    genericName: "",
+    ...lists,
+    therapeuticClass: "",
+    isOTC: false,
+    disclaimer: DEFAULT_DISCLAIMER,
+  };
+}
+
 /**
  * Ask Groq for structured information about a medicine.
  * Resolves with a validated medicine-info object.
@@ -63,7 +109,8 @@ export async function lookupMedicineWithAI(medicineName) {
     const response = await axios.post(
       GROQ_URL,
       {
-        model: MODEL,
+        // Read at request time so dotenv has already loaded in the app entry point.
+        model: getModel(),
         messages: [
           { role: "system", content: AI_LOOKUP_SYSTEM_PROMPT },
           { role: "user", content: `Medicine: ${medicineName}` },
@@ -92,7 +139,7 @@ export async function lookupMedicineWithAI(medicineName) {
     });
   }
 
-  const parsed = parseJsonObject(content);
+  const parsed = parseJsonObject(content) || parseMarkdownFallback(content, medicineName);
   if (!parsed || parsed.error === "not_found") {
     throw Object.assign(new Error("No reliable information returned"), {
       code: "NOT_FOUND",

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import MedicineCard from '../components/MedicineCard.jsx'
 import FallbackMedicineCard from '../components/FallbackMedicineCard.jsx'
 import MedicineModal from '../components/MedicineModal.jsx'
+import AIMedicineCard from '../components/AIMedicineCard.jsx'
 import { API_BASE } from '../utils/medicine.js'
 
 const MODES = {
@@ -11,6 +12,9 @@ const MODES = {
 }
 
 const SEARCH_DEBOUNCE_MS = 300
+// AI lookup is only sent on explicit submit; repeated submits within this window collapse into one.
+const AI_SUBMIT_DEBOUNCE_MS = 500
+const AI_IDLE = { status: 'idle', term: '', data: null, error: '' }
 
 async function readError(res, fallback) {
   try {
@@ -67,6 +71,11 @@ export default function Medicines() {
   const [extractLoading, setExtractLoading] = useState(false)
   const [extractError, setExtractError] = useState('')
 
+  // AI lookup state (used when the database search returns nothing)
+  const [aiState, setAiState] = useState(AI_IDLE)
+  const aiAbortRef = useRef(null)
+  const aiTimerRef = useRef(null)
+
   // Search request, cancelled when the query changes
   useEffect(() => {
     if (mode !== 'search') return undefined
@@ -79,6 +88,7 @@ export default function Medicines() {
         const params = new URLSearchParams()
         if (debouncedQuery) params.set('search', debouncedQuery)
         const res = await fetch(`${API_BASE}/medicines?${params.toString()}`, {
+          credentials: 'include',
           signal: controller.signal,
         })
         if (!res.ok) {
@@ -98,6 +108,69 @@ export default function Medicines() {
     return () => controller.abort()
   }, [debouncedQuery, mode])
 
+  // Any change to the query invalidates a pending or shown AI result.
+  useEffect(() => {
+    clearTimeout(aiTimerRef.current)
+    aiAbortRef.current?.abort()
+    setAiState(AI_IDLE)
+  }, [query])
+
+  // Cancel timers and in-flight AI requests on unmount.
+  useEffect(() => {
+    return () => {
+      clearTimeout(aiTimerRef.current)
+      aiAbortRef.current?.abort()
+    }
+  }, [])
+
+  const runAiLookup = async (term) => {
+    aiAbortRef.current?.abort()
+    const controller = new AbortController()
+    aiAbortRef.current = controller
+    setAiState({ status: 'loading', term, data: null, error: '' })
+
+    try {
+      const res = await fetch(`${API_BASE}/medicines/ai-lookup`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medicineName: term }),
+        signal: controller.signal,
+      })
+      if (res.status === 404) {
+        setAiState({ status: 'notFound', term, data: null, error: '' })
+        return
+      }
+      if (!res.ok) {
+        throw new Error(await readError(res, 'AI lookup is unavailable right now. Please try again.'))
+      }
+      const data = await res.json()
+      setAiState({ status: 'found', term, data, error: '' })
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setAiState({
+        status: 'error',
+        term,
+        data: null,
+        error: err.message || 'AI lookup is unavailable right now. Please try again.',
+      })
+    }
+  }
+
+  // Explicit user action only (button or Enter). Debounced so rapid repeats send one request.
+  const requestAiLookup = () => {
+    const term = query.trim()
+    if (!term) return
+    clearTimeout(aiTimerRef.current)
+    setAiState({ status: 'loading', term, data: null, error: '' })
+    aiTimerRef.current = setTimeout(() => runAiLookup(term), AI_SUBMIT_DEBOUNCE_MS)
+  }
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    if (showAiPrompt) requestAiLookup()
+  }
+
   const handleFindMedicines = async (event) => {
     event.preventDefault()
     const text = prescription.trim()
@@ -109,6 +182,7 @@ export default function Medicines() {
     try {
       const res = await fetch(`${API_BASE}/medicines/extract`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
@@ -128,8 +202,17 @@ export default function Medicines() {
     }
   }
 
+  const trimmedQuery = query.trim()
+  const showAiPrompt =
+    mode === 'search' &&
+    trimmedQuery !== '' &&
+    debouncedQuery === trimmedQuery &&
+    !searchLoading &&
+    !searchError &&
+    results.length === 0
+
   const renderSearch = () => (
-    <section aria-label="Medicine search" className="space-y-6">
+    <form onSubmit={handleSearchSubmit} aria-label="Medicine search" className="space-y-6">
       <div>
         <label htmlFor="medicine-search" className="mb-2 block text-sm font-semibold text-slate-700">
           Search by name or composition
@@ -163,7 +246,7 @@ export default function Medicines() {
         </p>
       )}
 
-      {!searchLoading && !searchError && results.length === 0 && (
+      {!searchLoading && !searchError && results.length === 0 && !trimmedQuery && (
         <StatusNotice>No medicines matched. Try a shorter name, or use Paste Prescription for a full list.</StatusNotice>
       )}
 
@@ -172,7 +255,47 @@ export default function Medicines() {
           <MedicineCard key={medicine._id} medicine={medicine} onViewDetails={setSelectedMedicine} />
         ))}
       </div>
-    </section>
+
+      {showAiPrompt && aiState.status === 'idle' && (
+        <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-white p-6 text-center">
+          <p className="text-sm font-semibold text-slate-800">
+            No match for "{trimmedQuery}" in our sample database.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Press Enter or use the button to ask MediGuide AI for general information about this medicine.
+          </p>
+          <button type="button" onClick={requestAiLookup} className="btn-primary mt-4">
+            Look up with MediGuide AI
+          </button>
+        </div>
+      )}
+
+      {aiState.status === 'loading' && (
+        <StatusNotice>Looking up "{aiState.term}" with MediGuide AI…</StatusNotice>
+      )}
+
+      {aiState.status === 'found' && (
+        <AIMedicineCard data={aiState.data} medicineName={aiState.term} />
+      )}
+
+      {aiState.status === 'notFound' && (
+        <div className="space-y-2">
+          <StatusNotice>
+            MediGuide AI couldn't find reliable information about "{aiState.term}". Try searching on 1mg instead.
+          </StatusNotice>
+          <FallbackMedicineCard name={aiState.term} />
+        </div>
+      )}
+
+      {aiState.status === 'error' && (
+        <div className="space-y-3">
+          <StatusNotice tone="error">{aiState.error}</StatusNotice>
+          <button type="button" onClick={requestAiLookup} className="btn-secondary">
+            Try again
+          </button>
+        </div>
+      )}
+    </form>
   )
 
   const renderPrescription = () => {

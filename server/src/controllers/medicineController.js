@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 
 import Medicine from "../models/medicine.js";
 import { extractMedicineNames } from "../services/medicineExtractionService.js";
+import { lookupMedicineWithAI } from "../services/medicineAiService.js";
+import { aiLookupSchema } from "../validators/aiLookupValidator.js";
 
 const SEARCH_LIMIT = 50;
 const CANDIDATE_LIMIT = 500;
@@ -261,5 +263,35 @@ export async function extractMedicines(req, res) {
   } catch (error) {
     console.error("Medicine extract lookup error:", error.message);
     return res.json({ found: [], notFound: names, dbAvailable: false });
+  }
+}
+
+/**
+ * POST /api/medicines/ai-lookup  { medicineName }
+ * Live Groq lookup for a medicine that is not in our database. Stateless:
+ * nothing is written to MongoDB.
+ */
+export async function aiLookupMedicine(req, res) {
+  const parsed = aiLookupSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || "Invalid medicine name",
+    });
+  }
+
+  try {
+    const info = await lookupMedicineWithAI(parsed.data.medicineName);
+    return res.json(info);
+  } catch (error) {
+    if (error.code === "NOT_FOUND") {
+      return res.status(404).json({
+        error:
+          "We couldn't find reliable information about this medicine. Try searching on 1mg.",
+      });
+    }
+    if (error.code === "AI_NOT_CONFIGURED") {
+      return res.status(503).json({ error: "AI lookup unavailable" });
+    }
+    return res.status(503).json({ error: "AI lookup unavailable" });
   }
 }

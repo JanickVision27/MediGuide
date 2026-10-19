@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ChatIcon, CloseIcon } from './icons.jsx'
 import { API_BASE } from '../utils/medicine.js'
+import { formatMedicineName, formatClassName } from '../utils/formatName.js'
 
 /** Hard cap for one chat session: 5 questions + 5 answers. */
 const MAX_MESSAGES = 10
@@ -198,8 +199,12 @@ export default function MedicineChat({ medicineName, medicineData, onClose }) {
   const limitReached = messages.length >= MAX_MESSAGES
   const cannotAskNew = messages.length + 2 > MAX_MESSAGES
   const composerDisabled = pending || cannotAskNew
-  const subtitle =
-    medicineData?.genericName || medicineData?.category || 'General educational information'
+  const subtitle = (() => {
+    if (medicineData?.genericName) return formatMedicineName(medicineData.genericName)
+    if (medicineData?.category) return formatClassName(medicineData.category)
+    return 'General educational information'
+  })()
+  const displayMedicineName = formatMedicineName(medicineName)
 
   return (
     <div className="fixed inset-0 z-[80]">
@@ -229,7 +234,7 @@ export default function MedicineChat({ medicineName, medicineData, onClose }) {
               id="medicine-chat-title"
               className="break-words text-base font-extrabold tracking-tight text-slate-900"
             >
-              Ask about {medicineName}
+              Ask about {displayMedicineName}
             </h2>
             <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>
           </div>
@@ -254,7 +259,7 @@ export default function MedicineChat({ medicineName, medicineData, onClose }) {
               <div className="rounded-2xl border border-indigo-100 bg-white p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">Hi, I can help with general information.</p>
                 <p className="mt-1">
-                  Ask about uses, side effects, precautions, or interactions for {medicineName}.
+                  Ask about uses, side effects, precautions, or interactions for {displayMedicineName}.
                   I cannot diagnose, prescribe, or advise on dosages.
                 </p>
               </div>
@@ -329,7 +334,7 @@ export default function MedicineChat({ medicineName, medicineData, onClose }) {
           )}
 
           <label htmlFor="medicine-chat-input" className="sr-only">
-            Ask a question about {medicineName}
+            Ask a question about {displayMedicineName}
           </label>
           <textarea
             id="medicine-chat-input"
@@ -343,7 +348,7 @@ export default function MedicineChat({ medicineName, medicineData, onClose }) {
             placeholder={
               cannotAskNew
                 ? 'Message limit reached'
-                : `Ask about ${medicineName}…`
+                : `Ask about ${displayMedicineName}…`
             }
             className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400"
           />

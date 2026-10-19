@@ -3,7 +3,12 @@ import mongoose from "mongoose";
 import Medicine from "../models/medicine.js";
 import { extractMedicineNames } from "../services/medicineExtractionService.js";
 import { lookupMedicineWithAI } from "../services/medicineAiService.js";
+import {
+  answerMedicineQuestion,
+  MAX_HISTORY_TURNS,
+} from "../services/medicineChatService.js";
 import { aiLookupSchema } from "../validators/aiLookupValidator.js";
+import { medicineChatSchema } from "../validators/medicineChatValidator.js";
 
 const SEARCH_LIMIT = 50;
 const CANDIDATE_LIMIT = 500;
@@ -280,8 +285,10 @@ export async function aiLookupMedicine(req, res) {
   }
 
   try {
-    const info = await lookupMedicineWithAI(parsed.data.medicineName);
-    return res.json(info);
+    const { data, cached } = await lookupMedicineWithAI(parsed.data.medicineName);
+    // Exposed for demos/tests: the second identical lookup is a cache hit.
+    res.set("X-AI-Cache", cached ? "HIT" : "MISS");
+    return res.json(data);
   } catch (error) {
     if (error.code === "NOT_FOUND") {
       return res.status(404).json({
@@ -292,6 +299,72 @@ export async function aiLookupMedicine(req, res) {
     if (error.code === "AI_NOT_CONFIGURED") {
       return res.status(503).json({ error: "AI lookup unavailable" });
     }
+    if (error.code === "AI_PARSE_FAILED" || error.code === "AI_EMPTY_RESPONSE") {
+      return res.status(502).json({
+        error: "MediGuide AI returned an unreadable response. Please try again.",
+      });
+    }
     return res.status(503).json({ error: "AI lookup unavailable" });
+  }
+}
+
+/**
+ * POST /api/medicines/ask  { medicineName, question, history }
+ * Stateless per-medicine AI chat. The client owns the transcript; nothing is
+ * written to MongoDB and only metadata is logged.
+ */
+export async function askMedicineQuestion(req, res) {
+  const parsed = medicineChatSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || "Invalid chat request",
+    });
+  }
+
+  const { medicineName, question, history } = parsed.data;
+  const recentHistory = history.slice(-MAX_HISTORY_TURNS);
+  const startedAt = Date.now();
+
+  try {
+    const answer = await answerMedicineQuestion({
+      medicineName,
+      question,
+      history: recentHistory,
+    });
+
+    // Metadata only - never log the question, answer, or transcript.
+    console.log(
+      "Medicine chat answered:",
+      JSON.stringify({
+        medicineName,
+        questionLength: question.length,
+        historyTurns: recentHistory.length,
+        durationMs: Date.now() - startedAt,
+      })
+    );
+
+    return res.json({ answer });
+  } catch (error) {
+    console.warn(
+      "Medicine chat failed:",
+      JSON.stringify({
+        medicineName,
+        code: error.code || "AI_REQUEST_FAILED",
+        upstreamStatus: error.status ?? null,
+        durationMs: Date.now() - startedAt,
+      })
+    );
+
+    if (error.code === "AI_NOT_CONFIGURED") {
+      return res.status(503).json({ error: "AI chat is not configured on the server" });
+    }
+    if (error.code === "AI_PARSE_FAILED" || error.code === "AI_EMPTY_RESPONSE") {
+      return res.status(502).json({
+        error: "MediGuide AI returned an unreadable answer. Please try again.",
+      });
+    }
+    return res.status(502).json({
+      error: "MediGuide AI is unavailable right now. Please try again.",
+    });
   }
 }

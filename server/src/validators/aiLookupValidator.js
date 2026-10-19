@@ -20,16 +20,22 @@ const BLOCKED_PATTERNS = [
 // Letters, digits, spaces and common medicine-name punctuation only.
 const ALLOWED_CHARACTERS = /^[\p{L}\p{N}\s\-.()'/+%,]+$/u;
 
+/**
+ * Shared medicine-name field. Used by ai-lookup and by per-medicine chat so
+ * both endpoints accept exactly the same input.
+ */
+export const medicineNameSchema = z
+  .string({ error: "medicineName must be a string" })
+  .trim()
+  .min(1, "Medicine name is required")
+  .max(100, "Medicine name must be 100 characters or fewer")
+  .refine((value) => ALLOWED_CHARACTERS.test(value), {
+    message: "Medicine name contains unsupported characters",
+  })
+  .refine((value) => !BLOCKED_PATTERNS.some((pattern) => pattern.test(value)), {
+    message: "Medicine name contains disallowed content",
+  });
+
 export const aiLookupSchema = z.object({
-  medicineName: z
-    .string({ error: "medicineName must be a string" })
-    .trim()
-    .min(1, "Medicine name is required")
-    .max(100, "Medicine name must be 100 characters or fewer")
-    .refine((value) => ALLOWED_CHARACTERS.test(value), {
-      message: "Medicine name contains unsupported characters",
-    })
-    .refine((value) => !BLOCKED_PATTERNS.some((pattern) => pattern.test(value)), {
-      message: "Medicine name contains disallowed content",
-    }),
+  medicineName: medicineNameSchema,
 });

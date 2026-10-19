@@ -10,6 +10,7 @@ import {
   InfoCircleIcon,
 } from './icons.jsx'
 import { oneMgSearchUrl } from '../utils/medicine.js'
+import { formatMedicineName, formatClassName } from '../utils/formatName.js'
 
 const FALLBACK_DISCLAIMER =
   'AI-generated information. Consult a licensed healthcare professional before taking any medication.'
@@ -91,6 +92,9 @@ export default function AIMedicineCard({ data, medicineName }) {
   const warnings = asList(info.warnings)
   const interactions = asList(info.interactions)
   const buyUrl = oneMgSearchUrl(medicineName)
+  const displayName = formatMedicineName(name)
+  const displayGenericName = info.genericName ? formatMedicineName(info.genericName) : null
+  const displayCategory = info.category ? formatClassName(info.category) : null
 
   return (
     <>
@@ -99,20 +103,20 @@ export default function AIMedicineCard({ data, medicineName }) {
           <MedicineIcon className="h-14 w-14 shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="break-words text-xl font-extrabold tracking-tight text-slate-900">{name}</h3>
+              <h3 className="break-words text-xl font-extrabold tracking-tight text-slate-900">{displayName}</h3>
               <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                 AI-generated
               </span>
             </div>
-            {info.genericName && (
-              <p className="mt-0.5 text-sm text-slate-600">Generic name: {info.genericName}</p>
+            {displayGenericName && (
+              <p className="mt-0.5 text-sm text-slate-600">Generic name: {displayGenericName}</p>
             )}
-            {(info.category || dosageForms.length > 0) && (
+            {(displayCategory || dosageForms.length > 0) && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                {info.category && (
+                {displayCategory && (
                   <span className="rounded-full bg-indigo-100 px-3 py-1 text-indigo-800 ring-1 ring-indigo-200">
                     <span className="sr-only">Category: </span>
-                    {info.category}
+                    {displayCategory}
                   </span>
                 )}
                 {dosageForms.map((form) => (

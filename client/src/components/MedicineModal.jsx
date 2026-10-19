@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import MedicineIcon from './MedicineIcon.jsx'
 import { DEMO_DISCLAIMER, oneMgSearchUrl } from '../utils/medicine.js'
+import { formatMedicineName, formatClassName } from '../utils/formatName.js'
 
 function Section({ title, tone = 'slate', children }) {
   const tones = {
@@ -54,9 +55,9 @@ export default function MedicineModal({ medicine, onClose }) {
   }, [onClose])
 
   const classes = [
-    ['Therapeutic Class', medicine.therapeuticClass],
-    ['Action Class', medicine.actionClass],
-    ['Chemical Class', medicine.chemicalClass],
+    ['Therapeutic Class', medicine.therapeuticClass ? formatClassName(medicine.therapeuticClass) : ''],
+    ['Action Class', medicine.actionClass ? formatClassName(medicine.actionClass) : ''],
+    ['Chemical Class', medicine.chemicalClass ? formatClassName(medicine.chemicalClass) : ''],
   ]
 
   return (
@@ -78,7 +79,7 @@ export default function MedicineModal({ medicine, onClose }) {
           <MedicineIcon className="h-14 w-14 shrink-0" />
           <div className="min-w-0 flex-1">
             <h2 id="medicine-modal-title" className="break-words text-xl font-extrabold tracking-tight text-slate-900">
-              {medicine.name}
+              {formatMedicineName(medicine.name)}
             </h2>
             {medicine.composition1 && (
               <p className="mt-0.5 text-sm text-slate-600">{medicine.composition1}</p>
@@ -131,7 +132,7 @@ export default function MedicineModal({ medicine, onClose }) {
           </Section>
 
           <Section title="Substitutes" tone="info">
-            <ListOrEmpty items={medicine.substitutes} />
+            <ListOrEmpty items={medicine.substitutes?.map((s) => formatMedicineName(s))} />
           </Section>
 
           <Section title="Habit Forming">

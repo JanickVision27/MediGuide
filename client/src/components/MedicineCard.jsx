@@ -3,6 +3,7 @@ import { useState } from 'react'
 import MedicineIcon from './MedicineIcon.jsx'
 import MedicineChat from './MedicineChat.jsx'
 import { ChatIcon } from './icons.jsx'
+import { formatMedicineName, formatClassName } from '../utils/formatName.js'
 
 /**
  * MedicineCard - standard result card for a medicine found in our database.
@@ -16,11 +17,11 @@ export default function MedicineCard({ medicine, onViewDetails }) {
         <div className="flex items-start gap-4">
           <MedicineIcon className="h-12 w-12 shrink-0" />
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-base font-bold text-slate-900" title={medicine.name}>
-              {medicine.name}
+            <h3 className="truncate text-base font-bold text-slate-900" title={formatMedicineName(medicine.name)}>
+              {formatMedicineName(medicine.name)}
             </h3>
             <p className="mt-0.5 truncate text-sm text-slate-500">
-              {medicine.therapeuticClass || 'Class not listed'}
+              {medicine.therapeuticClass ? formatClassName(medicine.therapeuticClass) : 'Class not listed'}
             </p>
           </div>
         </div>

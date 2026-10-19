@@ -8,10 +8,8 @@ import {
 import Layout from "./components/layout/Layout.jsx";
 import Home from "./pages/Home.jsx";
 import Profile from "./pages/Profile.jsx";
-import Prescriptions from "./pages/Prescriptions.jsx";
 import Appointments from "./pages/Appointments.jsx";
 import Medicines from "./pages/Medicines.jsx";
-import ChatUI from "./pages/ChatUI.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 /**
@@ -40,19 +38,12 @@ export default function App() {
 
           {/* Healthcare pages */}
           <Route
-            path="prescriptions"
-            element={<Prescriptions />}
-          />
-
-          <Route
             path="appointments"
             element={<Appointments />}
           />
 
           {/* Smart Medicine Lookup: search + AI prescription parsing */}
           <Route path="medicines" element={<Medicines />} />
-
-          <Route path="chat" element={<ChatUI />} />
 
           {/* Authentication pages */}
           <Route path="login" element={<Login />} />

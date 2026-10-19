@@ -3,6 +3,7 @@ import { useState } from 'react'
 import MedicineChat from './MedicineChat.jsx'
 import { ChatIcon } from './icons.jsx'
 import { oneMgSearchUrl } from '../utils/medicine.js'
+import { formatMedicineName } from '../utils/formatName.js'
 
 /**
  * FallbackMedicineCard - shown for a medicine the AI found in the prescription
@@ -29,7 +30,7 @@ export default function FallbackMedicineCard({ name }) {
             </svg>
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="break-words text-base font-bold text-slate-900">{name}</h3>
+            <h3 className="break-words text-base font-bold text-slate-900">{formatMedicineName(name)}</h3>
             <p className="mt-1 text-sm text-amber-800">
               Detailed data not available in our sample demo.
             </p>

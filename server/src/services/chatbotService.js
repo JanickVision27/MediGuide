@@ -74,7 +74,7 @@ export async function getChatResponse(userMessage) {
 
   } catch (error) {
     // 4. Log the REAL error so you know exactly what went wrong
-    console.error('❌ Groq API Error Details:', error.response?.data?.error || error.message);
+    console.error('Groq API Error Details:', error.response?.data?.error || error.message);
     return "this is test trouble connecting to the AI service right now. Please try again.";
   }
 }

@@ -129,3 +129,24 @@ export const LockIcon = (props) => (
     <path d="M8.25 10.25V7.5a3.75 3.75 0 0 1 7.5 0v2.75" />
   </Icon>
 )
+
+export const CheckCircleIcon = (props) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8.25 12.25l2.5 2.5 5-5.25" />
+  </Icon>
+)
+
+export const InfoCircleIcon = (props) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5.25M12 7.75h.01" />
+  </Icon>
+)
+
+export const AlertOctagonIcon = (props) => (
+  <Icon {...props}>
+    <path d="M8.2 3.25h7.6l5.95 5.95v7.6l-5.95 5.95H8.2L2.25 16.8V9.2z" />
+    <path d="M12 8v4.5M12 16h.01" />
+  </Icon>
+)

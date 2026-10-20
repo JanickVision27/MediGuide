@@ -4,9 +4,7 @@ import {
   ArrowRightIcon,
   AlertTriangleIcon,
   UserIcon,
-  PillIcon,
   CalendarIcon,
-  ChatIcon,
   ActivityIcon,
   LockIcon,
 } from '../components/icons.jsx'
@@ -21,25 +19,11 @@ const FEATURES = [
     description: 'Demographics, contact details, allergies and medical history in one place.',
   },
   {
-    to: '/prescriptions',
-    label: 'Prescriptions',
-    Icon: PillIcon,
-    title: 'Prescriptions',
-    description: 'Browse medication lists, dosage instructions and refill history.',
-  },
-  {
     to: '/appointments',
     label: 'Appointments',
     Icon: CalendarIcon,
     title: 'Appointments',
     description: 'Schedule, reschedule and track upcoming visits on a clear timeline.',
-  },
-  {
-    to: '/chat',
-    label: 'ChatUI',
-    Icon: ChatIcon,
-    title: 'Chat Assistant',
-    description: 'A guided conversational interface for general health information.',
   },
 ]
 

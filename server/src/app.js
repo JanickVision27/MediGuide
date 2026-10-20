@@ -1,4 +1,8 @@
-﻿import dotenv from "dotenv";
+import dns from "node:dns";
+// 1. Force Node.js to use public DNS servers (fixes the SRV ECONNREFUSED error)
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -7,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import chatRoutes from "./routes/chatRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import medicineRoutes from "./routes/medicineRoutes.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,59 +30,36 @@ app.use(express.json());
 // API routes
 app.use("/api", chatRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/medicines", medicineRoutes);
 
 // Health-check route
 app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
     service: "MediGuide API",
-    database:
-      mongoose.connection.readyState === 1
-        ? "connected"
-        : "disconnected",
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
-// Connect to MongoDB and start the server
-async function startServer() {
+// 2. Simplified clean database connection routine
+async function connectToDatabase() {
+  const mongoUri = process.env.MONGODB_URI?.trim();
+
+  if (!mongoUri) {
+    console.error("MONGODB_URI is missing from your configuration.");
+    return;
+  }
+
   try {
-    const mongoUri = process.env.MONGODB_URI?.trim();
-
-    if (!mongoUri) {
-      throw new Error(
-        "MONGODB_URI is missing from the root .env file."
-      );
-    }
-
-    // Check the URI format without printing credentials
-    if (
-      !mongoUri.startsWith("mongodb://") &&
-      !mongoUri.startsWith("mongodb+srv://")
-    ) {
-      throw new Error(
-        "Invalid MongoDB URI format. It must start with mongodb:// or mongodb+srv://."
-      );
-    }
-
-    if (/\s/.test(mongoUri)) {
-      throw new Error(
-        "MONGODB_URI contains whitespace. Check your .env file."
-      );
-    }
-
     await mongoose.connect(mongoUri);
-
     console.log("MongoDB connected successfully");
-
-    app.listen(port, () => {
-      console.log(
-        `MediGuide API listening on http://localhost:${port}`
-      );
-    });
   } catch (error) {
-    console.error("Failed to start MediGuide API:", error.message);
-    process.exit(1);
+    console.error("MongoDB connection failed:", error.message);
   }
 }
 
-startServer();
+app.listen(port, () => {
+  console.log(`MediGuide API listening on http://localhost:${port}`);
+});
+
+void connectToDatabase();

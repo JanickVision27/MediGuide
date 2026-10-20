@@ -24,3 +24,17 @@ export const medicineChatRateLimiter = rateLimit({
     error: "Too many AI chat requests. Please wait a minute and try again.",
   },
 });
+
+/**
+ * Prescription file uploads (PDF/image) also trigger an AI extraction call, so
+ * cap them at 5 per minute per IP to protect the paid Groq quota.
+ */
+export const extractFileRateLimiter = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    error: "Too many prescription uploads. Please wait a minute and try again.",
+  },
+});

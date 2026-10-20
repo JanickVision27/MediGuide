@@ -1,9 +1,4 @@
-import axios from "axios";
-
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-
-// Same model the existing chatbot uses, overridable per environment.
-const MODEL = process.env.GROQ_EXTRACT_MODEL?.trim() || "openai/gpt-oss-120b";
+import { createChatCompletion } from "./groqClient.js";
 
 // Exact system prompt required for prescription parsing. Do not reword.
 export const EXTRACTION_SYSTEM_PROMPT =
@@ -68,40 +63,25 @@ export function parseMedicineArray(raw) {
  * Throws with `code` set to AI_NOT_CONFIGURED, AI_REQUEST_FAILED or AI_PARSE_FAILED.
  */
 export async function extractMedicineNames(text) {
-  const apiKey = process.env.GROQ_API || process.env.AI_API_KEY;
-  if (!apiKey) {
-    throw Object.assign(new Error("AI API key is not configured"), {
-      code: "AI_NOT_CONFIGURED",
-    });
-  }
-
+  // Use the shared Groq client so model selection (GROQ_AI_LOOKUP_MODEL,
+  // default openai/gpt-oss-120b) and API-key lookup are consistent with the
+  // rest of the MediGuide AI features.
   let content;
   try {
-    const response = await axios.post(
-      GROQ_URL,
-      {
-        model: MODEL,
-        messages: [
-          { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
-          { role: "user", content: text },
-        ],
-        temperature: 0,
-        max_tokens: 1024,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        timeout: 20000,
-      }
-    );
-    content = response.data?.choices?.[0]?.message?.content;
+    content = await createChatCompletion({
+      messages: [
+        { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
+        { role: "user", content: text },
+      ],
+      temperature: 0,
+      maxTokens: 1024,
+    });
   } catch (error) {
-    console.error(
-      "Groq extraction error:",
-      error.response?.data?.error || error.message
-    );
+    // createChatCompletion already throws typed errors (AI_NOT_CONFIGURED,
+    // AI_REQUEST_FAILED, AI_EMPTY_RESPONSE). Re-throw with an extraction-
+    // specific message when needed.
+    if (error.code === "AI_NOT_CONFIGURED") throw error;
+    console.error("Groq extraction error:", error.apiMessage || error.message);
     throw Object.assign(new Error("AI extraction request failed"), {
       code: "AI_REQUEST_FAILED",
     });

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { PDFParse } from "pdf-parse";
 
 import Medicine from "../models/medicine.js";
 import { extractMedicineNames } from "../services/medicineExtractionService.js";
@@ -14,7 +15,9 @@ const SEARCH_LIMIT = 50;
 const CANDIDATE_LIMIT = 500;
 const MAX_SEARCH_LENGTH = 100;
 const MAX_PRESCRIPTION_LENGTH = 5000;
+const MAX_PDF_TEXT_LENGTH = 20000;
 const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
+const PDF_MIME_TYPE = "application/pdf";
 
 const DB_UNAVAILABLE_MESSAGE =
   "Medicine database is currently unavailable. Please try again later.";
@@ -366,5 +369,99 @@ export async function askMedicineQuestion(req, res) {
     return res.status(502).json({
       error: "MediGuide AI is unavailable right now. Please try again.",
     });
+  }
+}
+
+/**
+ * POST /api/medicines/extract-file  (multipart/form-data, field: `file`)
+ *
+ * Accepts a PDF prescription upload held entirely in memory (no disk writes),
+ * extracts plain text with pdf-parse, sends it to Groq to extract medicine
+ * names, and returns the same { found, notFound, dbAvailable } shape as
+ * POST /extract. Images are intentionally rejected — OCR runs in the browser
+ * via Tesseract.js and posts its text to the existing /extract endpoint.
+ */
+export async function extractFileMedicines(req, res) {
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ error: "No file uploaded. Please attach a PDF." });
+  }
+
+  if (file.mimetype !== PDF_MIME_TYPE && !file.originalname.toLowerCase().endsWith(".pdf")) {
+    return res.status(400).json({ error: "Only PDF files are supported for upload." });
+  }
+
+  if (!file.buffer || file.buffer.length === 0) {
+    return res.status(400).json({ error: "Uploaded file is empty." });
+  }
+
+  let text;
+  let pdf;
+  try {
+    pdf = new PDFParse({ data: file.buffer });
+    const result = await pdf.getText();
+    text = String(result.text || "").replace(/\s+/g, " ").trim();
+  } catch (error) {
+    console.error("PDF parse error:", error.message);
+    return res.status(400).json({ error: "Could not read the PDF. It may be corrupted or password-protected." });
+  } finally {
+    try {
+      if (pdf) await pdf.destroy();
+    } catch {
+      // ignore teardown errors
+    }
+  }
+
+  if (!text) {
+    return res
+      .status(400)
+      .json({ error: "No readable text was found in the PDF. It may be a scanned image." });
+  }
+
+  // Cap text before sending to Groq — preserves the 5000 char effective budget
+  // while still accepting the first chunk of long PDFs.
+  const trimmed = text.slice(0, MAX_PDF_TEXT_LENGTH);
+
+  let names;
+  try {
+    names = await extractMedicineNames(trimmed);
+  } catch (error) {
+    if (error.code === "AI_NOT_CONFIGURED") {
+      return res.status(503).json({ error: "AI service is not configured on the server" });
+    }
+    return res.status(502).json({
+      error: "Could not extract medicine names right now. Please try again.",
+    });
+  }
+
+  if (names.length === 0) {
+    return res.json({ found: [], notFound: [], dbAvailable: dbReady() });
+  }
+
+  if (!dbReady()) {
+    return res.json({ found: [], notFound: names, dbAvailable: false });
+  }
+
+  try {
+    const clauses = names.flatMap((name) => [
+      { name: { $regex: prefixRegex(name).source, $options: "i" } },
+      { composition1: { $regex: wordRegex(name).source, $options: "i" } },
+    ]);
+
+    const candidates = await Medicine.find({ $or: clauses })
+      .limit(CANDIDATE_LIMIT)
+      .lean();
+
+    const { found, notFound } = splitMedicines(names, candidates);
+
+    return res.json({
+      found: found.map(serializeMedicine),
+      notFound,
+      dbAvailable: true,
+    });
+  } catch (error) {
+    console.error("Medicine extract-file lookup error:", error.message);
+    return res.json({ found: [], notFound: names, dbAvailable: false });
   }
 }

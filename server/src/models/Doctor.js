@@ -13,13 +13,24 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      maxlength: 100,
+      maxlength: 120,
     },
     specialty: {
       type: String,
       required: true,
       trim: true,
+      maxlength: 120,
+    },
+    location: {
+      type: String,
+      default: "",
+      trim: true,
       maxlength: 100,
+    },
+    active: {
+      type: Boolean,
+      default: true,
+      index: true,
     },
     isDemo: {
       type: Boolean,
@@ -30,6 +41,6 @@ const doctorSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-doctorSchema.index({ name: 1, specialty: 1 });
+doctorSchema.index({ active: 1, name: 1, specialty: 1 });
 
 export default mongoose.model("Doctor", doctorSchema);

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
-import Appointment from "../models/appointment.js";
+import Appointment from "../models/Appointment.js";
+import Doctor from "../models/Doctor.js";
 
 function localDateString(date = new Date()) {
   const year = date.getFullYear();
@@ -12,12 +13,9 @@ function localDateString(date = new Date()) {
 export async function getAppointments(req, res, next) {
   try {
     const appointments = await Appointment.find({ userId: req.userId }).sort({
-      date: 1,
-      time: 1,
       createdAt: -1,
     });
-
-    return res.status(200).json({ appointments });
+    return res.status(200).json(appointments);
   } catch (error) {
     return next(error);
   }
@@ -33,14 +31,26 @@ export async function createAppointment(req, res, next) {
       });
     }
 
+    // Never trust provider details posted by the browser. The selected doctor
+    // must still be active in the current directory.
+    const selectedDoctor = await Doctor.findOne({
+      name: doctor,
+      specialty,
+      active: true,
+    }).select("name specialty");
+    if (!selectedDoctor) {
+      return res.status(400).json({
+        message: "Please choose a provider from the current directory.",
+      });
+    }
+
     const conflict = await Appointment.exists({
       userId: req.userId,
-      doctor,
+      doctor: selectedDoctor.name,
       date,
       time,
       status: "Upcoming",
     });
-
     if (conflict) {
       return res.status(409).json({
         message: "You already have this doctor booked at that time.",
@@ -51,8 +61,8 @@ export async function createAppointment(req, res, next) {
       userId: req.userId,
       patientName: req.user.fullName,
       patientEmail: req.user.email,
-      doctor,
-      specialty,
+      doctor: selectedDoctor.name,
+      specialty: selectedDoctor.specialty,
       date,
       time,
       reason,

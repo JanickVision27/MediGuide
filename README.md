@@ -1,7 +1,7 @@
 # MediGuide
 
 MediGuide is a full-stack healthcare assistance demo with authenticated patient profiles,
-per-user appointments, medicine lookup, a synthetic hospital directory, and educational AI chat.
+per-user appointments, medicine lookup, map-based hospital search, and educational AI chat.
 
 > **Educational demo only:** MediGuide is not a clinical system and does not provide medical
 > advice, diagnosis, or treatment. Use synthetic information only. Never enter real patient
@@ -20,8 +20,10 @@ per-user appointments, medicine lookup, a synthetic hospital directory, and educ
 - Registration, login, logout, and session restoration
 - Public-only auth pages and protected workspace routes
 - Persistent, account-specific profile editing
-- Per-user appointment booking and cancellation (the client never supplies a user ID)
-- Synthetic doctor and hospital directories, clearly labelled as demo data
+- Per-user appointment booking and cancellation with active-provider verification
+- Synthetic doctor directory with specialty/location filtering
+- Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
+  and optional Google Places listings/photos
 - Existing medicine search, prescription extraction, and AI chat features
 
 ## Getting started
@@ -46,6 +48,13 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 `JWT_SECRET` is required in production. In development, an ephemeral secret is generated when
 one is absent, but all sessions become invalid when the server restarts. `GROQ_API_KEY` is only
 needed for the optional AI features.
+
+Hospital search works without a Google key through Nominatim/Overpass (OpenStreetMap). Set
+`GOOGLE_PLACES_API_KEY` to prefer Google Places listings and photos. Live provider access requires
+internet connectivity; fresh OpenStreetMap results are cached in MongoDB for 24 hours, and stale
+records are clearly labelled if used during an outage. For a public deployment, set
+`HOSPITAL_DIRECTORY_USER_AGENT` to a value identifying the project and a contact, in line with
+Nominatim's usage policy.
 
 ### 2. Start the API
 
@@ -89,7 +98,7 @@ npm run preview
 | `/login`, `/register` | Signed-out only | Account access |
 | `/profile` | Authenticated | Persistent user profile |
 | `/appointments` | Authenticated | Per-user appointments |
-| `/hospitals` | Authenticated | Synthetic hospital directory |
+| `/hospitals` | Authenticated | Live map-based hospital directory |
 | `/medicines` | Authenticated | Medicine and prescription lookup |
 | `/prescriptions` | Authenticated | Prescription workspace placeholder |
 | `/chat` | Authenticated | Educational AI assistant |
@@ -106,8 +115,9 @@ npm run preview
 | `GET /api/appointments` | List only the session user's appointments |
 | `POST /api/appointments` | Book an appointment for the session user |
 | `PATCH /api/appointments/:id/cancel` | Cancel an owned upcoming appointment |
-| `GET /api/hospitals/search` | Search the synthetic hospital directory |
-| `GET /api/doctors` | List/filter synthetic doctors |
+| `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
+| `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
+| `GET /api/doctors` | List/filter active synthetic doctors |
 
 ## Project structure
 
@@ -122,7 +132,7 @@ client/src/
 server/src/
 ├── controllers/                 # Auth, appointments, directory, medicines
 ├── middleware/requireAuth.js     # Verifies cookie session and loads the user
-├── models/                      # User, Doctor, and appointment schemas
+├── models/                      # User, Doctor, Hospital, and Appointment schemas
 ├── routes/                      # Express API routes
 ├── utils/session.js              # JWT and secure-cookie helpers
 └── validators/                  # Zod request validation
@@ -134,6 +144,7 @@ server/src/
 - Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production.
 - Authentication requests are rate-limited, and login failures use a generic message.
 - Appointment reads and writes are scoped by the verified server-side session.
+- Hospital search/photo endpoints are rate-limited; Google keys remain on the server.
 - Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN`, and use HTTPS in production.
 - This remains an educational demo, not a production healthcare or PHI-storage solution.
 

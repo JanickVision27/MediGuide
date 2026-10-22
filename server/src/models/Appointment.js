@@ -25,13 +25,13 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       required: [true, "Doctor name is required"],
       trim: true,
-      maxlength: 100,
+      maxlength: 120,
     },
     specialty: {
       type: String,
       required: [true, "Specialty is required"],
       trim: true,
-      maxlength: 100,
+      maxlength: 120,
     },
     date: {
       type: String,
@@ -60,6 +60,4 @@ const appointmentSchema = new mongoose.Schema(
 
 appointmentSchema.index({ userId: 1, date: 1, time: 1 });
 
-const Appointment = mongoose.model("Appointment", appointmentSchema);
-
-export default Appointment;
+export default mongoose.model("Appointment", appointmentSchema);

@@ -20,8 +20,8 @@ function isCalendarDate(value) {
 
 export const appointmentSchema = z
   .object({
-    doctor: z.string().trim().min(2).max(100),
-    specialty: z.string().trim().min(2).max(100),
+    doctor: z.string().trim().min(2).max(120),
+    specialty: z.string().trim().min(2).max(120),
     date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD")

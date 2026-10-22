@@ -18,6 +18,8 @@ export async function seedDemoDoctors() {
           $set: {
             name: doctor.name,
             specialty: doctor.specialty,
+            location: doctor.location,
+            active: true,
           },
           $setOnInsert: { slug: doctor.id, isDemo: true },
         },
@@ -39,13 +41,15 @@ export async function getDoctors(req, res, next) {
 
   const name = normalizeFilter(req.query.name, 100);
   const specialty = normalizeFilter(req.query.specialty, 100);
-  if (name === null || specialty === null) {
+  const location = normalizeFilter(req.query.location, 100);
+  if (name === null || specialty === null || location === null) {
     return res.status(400).json({ message: "Invalid doctor search filters." });
   }
 
-  const filter = {};
+  const filter = { active: true };
   if (name) filter.name = containsRegex(name);
   if (specialty) filter.specialty = containsRegex(specialty);
+  if (location) filter.location = containsRegex(location);
 
   try {
     const records = await Doctor.find(filter)
@@ -56,6 +60,7 @@ export async function getDoctors(req, res, next) {
       id: doctor._id.toString(),
       name: doctor.name,
       specialty: doctor.specialty,
+      location: doctor.location || "",
     }));
 
     return res.status(200).json({

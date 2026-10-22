@@ -23,7 +23,13 @@ export async function getAppointments(req, res, next) {
 
 export async function createAppointment(req, res, next) {
   try {
-    const { doctor, specialty, date, time, reason = "" } = req.body;
+    const { doctor, specialty, hospital, date, time, reason = "" } = req.body;
+
+    if (!hospital) {
+      return res.status(400).json({
+        message: "Select a hospital location for the appointment.",
+      });
+    }
 
     if (date < localDateString()) {
       return res.status(400).json({
@@ -63,6 +69,9 @@ export async function createAppointment(req, res, next) {
       patientEmail: req.user.email,
       doctor: selectedDoctor.name,
       specialty: selectedDoctor.specialty,
+      // Preserve the selected directory result with the booking. Later changes
+      // to a live hospital listing must not rewrite an existing appointment.
+      hospital,
       date,
       time,
       reason,

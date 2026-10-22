@@ -4,9 +4,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import {
   CalendarIcon,
-  ChatIcon,
   CloseIcon,
-  HospitalIcon,
   LogoMark,
   PillIcon,
   ShieldCheckIcon,
@@ -15,10 +13,8 @@ import {
 
 const NAV_ITEMS = [
   { to: '/profile', label: 'Profile', Icon: UserIcon },
-  { to: '/medicines', label: 'Medicines', Icon: PillIcon },
-  { to: '/hospitals', label: 'Hospitals', Icon: HospitalIcon },
+  { to: '/medicines', label: 'Medicine & Prescription', Icon: PillIcon },
   { to: '/appointments', label: 'Appointments', Icon: CalendarIcon },
-  { to: '/chat', label: 'AI Assistant', Icon: ChatIcon },
 ]
 
 export default function Sidebar({ open = false, onClose }) {

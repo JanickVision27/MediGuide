@@ -24,6 +24,15 @@ const password = z
 const optionalText = (maxLength) =>
   z.string().trim().max(maxLength).optional();
 
+const phoneNumber = z
+  .string()
+  .trim()
+  .max(20, "Phone number must contain no more than 20 characters")
+  .refine((value) => !value || /^[+()\d\s.-]{7,20}$/.test(value), {
+    message: "Enter a valid phone number or leave it blank",
+  })
+  .optional();
+
 const stringList = (maxItems, maxLength) =>
   z.array(z.string().trim().min(1).max(maxLength)).max(maxItems).optional();
 
@@ -68,7 +77,9 @@ export const profileSchema = z
       .regex(/^(?:\d{4}-\d{2}-\d{2})?$/, "Date of birth must use YYYY-MM-DD")
       .refine(isEmptyOrCalendarDate, "Enter a valid date of birth")
       .optional(),
-    phone: optionalText(40),
+    phone: phoneNumber,
+    city: optionalText(80),
+    state: optionalText(80),
     address: optionalText(240),
     bloodType: z
       .enum(["", "Unknown", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])

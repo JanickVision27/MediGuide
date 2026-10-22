@@ -41,6 +41,10 @@ function getSessionSecret() {
   return developmentSecret;
 }
 
+export function validateSessionConfiguration() {
+  getSessionSecret();
+}
+
 export function getCookieOptions() {
   return {
     httpOnly: true,

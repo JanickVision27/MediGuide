@@ -34,7 +34,7 @@ Copy `.env.example` to `.env` in the repository root and set at least:
 MONGODB_URI=mongodb://127.0.0.1:27017/mediguide
 JWT_SECRET=replace-with-a-random-secret-at-least-32-characters-long
 PORT=5000
-CLIENT_URL=http://localhost:5173
+CLIENT_ORIGIN=http://localhost:5173
 ```
 
 Generate a suitable local secret with:
@@ -55,8 +55,10 @@ npm ci
 npm run dev
 ```
 
-The API listens on `http://localhost:5000` by default. Its health check is
-`GET http://localhost:5000/api/health`.
+The API validates its configuration, connects to MongoDB, and upserts the synthetic demo doctors
+before listening on `http://localhost:5000`. Seeding is idempotent, so restarts do not create
+duplicates. Startup stops with a clear error if MongoDB or the production auth configuration is
+invalid. The health check is `GET http://localhost:5000/api/health`.
 
 ### 3. Start the frontend
 
@@ -120,7 +122,7 @@ client/src/
 server/src/
 ├── controllers/                 # Auth, appointments, directory, medicines
 ├── middleware/requireAuth.js     # Verifies cookie session and loads the user
-├── models/                      # User and appointment schemas
+├── models/                      # User, Doctor, and appointment schemas
 ├── routes/                      # Express API routes
 ├── utils/session.js              # JWT and secure-cookie helpers
 └── validators/                  # Zod request validation
@@ -132,7 +134,7 @@ server/src/
 - Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production.
 - Authentication requests are rate-limited, and login failures use a generic message.
 - Appointment reads and writes are scoped by the verified server-side session.
-- Set a strong `JWT_SECRET`, configure `CLIENT_URL`, and use HTTPS in production.
+- Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN`, and use HTTPS in production.
 - This remains an educational demo, not a production healthcare or PHI-storage solution.
 
 ## License

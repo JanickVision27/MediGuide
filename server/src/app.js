@@ -1,47 +1,91 @@
-import dns from "node:dns";
-// 1. Force Node.js to use public DNS servers (fixes the SRV ECONNREFUSED error)
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-
-import dotenv from "dotenv";
-import express from "express";
-import cors from "cors";
-import mongoose from "mongoose";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import chatRoutes from "./routes/chatRoutes.js";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
+import {
+  doctorRouter,
+  hospitalRouter,
+} from "./routes/directoryRoutes.js";
 import medicineRoutes from "./routes/medicineRoutes.js";
 
-const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const currentFile = fileURLToPath(import.meta.url);
+const currentDirectory = path.dirname(currentFile);
 
-// Load the .env file from the project root
 dotenv.config({
   path: path.resolve(currentDirectory, "../../.env"),
 });
 
 const app = express();
 const port = process.env.PORT || 5000;
+const allowedOrigins = (process.env.CLIENT_URL ||
+  "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(
+  cors({
+    credentials: true,
+    origin(origin, callback) {
+      // Non-browser and same-origin requests may not send an Origin header.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+  })
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(cookieParser());
 
-// API routes
-app.use("/api", chatRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/hospitals", hospitalRouter);
+app.use("/api/doctors", doctorRouter);
 app.use("/api/medicines", medicineRoutes);
+app.use("/api", chatRoutes);
 
-// Health-check route
-app.get("/health", (_req, res) => {
-  res.status(200).json({
+function healthCheck(_req, res) {
+  return res.status(200).json({
     status: "ok",
     service: "MediGuide API",
     database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
+}
+
+app.get("/api/health", healthCheck);
+// Retain the old health path for existing local tooling.
+app.get("/health", healthCheck);
+
+app.use("/api", (_req, res) => {
+  return res.status(404).json({ message: "API endpoint not found." });
 });
 
-// 2. Simplified clean database connection routine
+app.use((error, _req, res, _next) => {
+  console.error("MediGuide API error:", error);
+
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({ message: "Request body is too large." });
+  }
+
+  if (error?.type === "entity.parse.failed") {
+    return res.status(400).json({ message: "Request body contains invalid JSON." });
+  }
+
+  return res.status(500).json({
+    message: "Something went wrong on the server. Please try again.",
+  });
+});
+
 async function connectToDatabase() {
   const mongoUri = process.env.MONGODB_URI?.trim();
 
@@ -58,8 +102,13 @@ async function connectToDatabase() {
   }
 }
 
-app.listen(port, () => {
-  console.log(`MediGuide API listening on http://localhost:${port}`);
-});
+// Export the Express app for tests, but only listen when run as the entry point.
+if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
+  app.listen(port, () => {
+    console.log(`MediGuide API listening on http://localhost:${port}`);
+  });
+  void connectToDatabase();
+}
 
-void connectToDatabase();
+export { connectToDatabase };
+export default app;

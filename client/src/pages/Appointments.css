@@ -36,8 +36,38 @@
   cursor: pointer;
 }
 
-.book-appointment-btn:hover {
+.book-appointment-btn:hover:not(:disabled) {
   background: #0848b5;
+}
+
+.book-appointment-btn:disabled,
+.cancel-appointment-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.appointment-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 15px;
+  margin-bottom: 18px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+.appointment-error button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .appointment-message {

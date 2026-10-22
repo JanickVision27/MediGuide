@@ -78,7 +78,7 @@ export default function Home() {
           </div>
 
           <p className="mt-5 text-sm text-brand-100/80">
-            Just exploring? Use the sidebar to jump straight into any section.
+            Create a demo account to explore the workspace with synthetic information.
           </p>
         </div>
       </section>
@@ -107,10 +107,9 @@ export default function Home() {
               <strong className="font-bold">never</strong> be used to make clinical decisions.
             </p>
             <p className="text-sm leading-relaxed text-amber-800 sm:text-[15px]">
-              All patient records, prescriptions, appointments and chat messages shown in this
-              application are <strong className="font-bold">entirely synthetic and fictitious</strong>.
-              No real protected health information (PHI) is collected, stored or transmitted. Any
-              resemblance to real persons is purely coincidental.
+              This application is designed for <strong className="font-bold">synthetic and fictitious information only</strong>.
+              Do not enter real protected health information (PHI) or sensitive personal details.
+              Demo directory entries do not represent real providers or verified availability.
             </p>
             <p className="text-sm font-semibold leading-relaxed text-amber-900 sm:text-[15px]">
               If you are experiencing a medical emergency, stop using this app and contact your

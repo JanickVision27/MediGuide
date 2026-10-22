@@ -221,13 +221,28 @@
   margin-top: 24px;
 }
 
-.profile-success {
+.profile-success,
+.profile-error {
   margin-bottom: 20px;
   padding: 13px 16px;
+  border-radius: 8px;
+}
+
+.profile-success {
   color: #166534;
   background: #ecfdf3;
   border: 1px solid #bbf7d0;
-  border-radius: 8px;
+}
+
+.profile-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.profile-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .profile-disclaimer {

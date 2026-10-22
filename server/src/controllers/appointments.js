@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 import Appointment from "../models/Appointment.js";
 import Doctor from "../models/Doctor.js";
+import { sendAppointmentConfirmation } from "../services/emailService.js";
 
 function localDateString(date = new Date()) {
   const year = date.getFullYear();
@@ -76,6 +77,21 @@ export async function createAppointment(req, res, next) {
       time,
       reason,
       status: "Upcoming",
+    });
+
+    // Notification delivery is deliberately fire-and-forget. A Resend outage or
+    // missing key must never roll back or delay an otherwise successful booking.
+    void sendAppointmentConfirmation({
+      to: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctor: appointment.doctor,
+      specialty: appointment.specialty,
+      hospital: appointment.hospital,
+      date: appointment.date,
+      time: appointment.time,
+      reason: appointment.reason,
+    }).catch((error) => {
+      console.error("Appointment confirmation email failed:", error.message);
     });
 
     return res.status(201).json({

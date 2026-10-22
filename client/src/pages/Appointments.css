@@ -36,8 +36,38 @@
   cursor: pointer;
 }
 
-.book-appointment-btn:hover {
+.book-appointment-btn:hover:not(:disabled) {
   background: #0848b5;
+}
+
+.book-appointment-btn:disabled,
+.cancel-appointment-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.appointment-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 15px;
+  margin-bottom: 18px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+.appointment-error button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .appointment-message {
@@ -121,6 +151,13 @@
   font-size: 14px;
 }
 
+.booking-form-card input:disabled,
+.booking-form-card select:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
 .booking-form-card .book-appointment-btn {
   margin-top: 8px;
 }
@@ -192,6 +229,13 @@
   font-size: 15px;
 }
 
+.doctor-details > p.appointment-reason {
+  margin: 12px 0 0;
+  color: #536174;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .appointment-datetime {
   display: flex;
   flex-wrap: wrap;
@@ -250,7 +294,7 @@
   cursor: pointer;
 }
 
-.cancel-appointment-btn:hover {
+.cancel-appointment-btn:hover:not(:disabled) {
   background: #eff6ff;
 }
 

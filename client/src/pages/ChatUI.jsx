@@ -76,7 +76,7 @@ export default function ChatUI() {
 
       {/* Disclaimer */}
       <div className="border-t border-amber-200 bg-amber-50 px-6 py-2 text-center text-xs font-medium text-amber-800">
-        ⚠️ Educational Demo: This AI does not diagnose or prescribe. For emergencies, call 911.
+        ⚠️ Educational Demo: This AI does not diagnose or prescribe. For emergencies, contact local emergency services.
       </div>
 
       {/* Input Area */}

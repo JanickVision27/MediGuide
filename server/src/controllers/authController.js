@@ -13,7 +13,7 @@ function publicUser(user) {
     id: user._id.toString(),
     fullName: user.fullName,
     email: user.email,
-    role: user.role,
+    role: user.role?.toLowerCase() || "patient",
     dob: user.dob || "",
     phone: user.phone || "",
     city: user.city || "",

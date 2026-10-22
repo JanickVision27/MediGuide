@@ -31,7 +31,8 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["patient"],
+      // Accept the initial demo release's value so existing accounts remain editable.
+      enum: ["patient", "Patient"],
       default: "patient",
       immutable: true,
     },

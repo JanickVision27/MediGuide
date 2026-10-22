@@ -1,224 +1,232 @@
-/**
- * Appointments page - PLACEHOLDER.
- *
- * Teammate handoff: this file is yours. Replace the div below with your feature.
- * It already renders inside <Layout />, so the sidebar, header and footer are
- * handled for you - just build the page content.
- *
- * Route: /appointments  (registered in src/App.jsx)
- */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import React, { useState } from "react";
-import "./Appointments.css";
-
-const STORAGE_KEY = "mediguide_appointments";
-
-const doctors = [
-  { name: "Dr. Rahul Mehta", specialty: "Cardiologist" },
-  { name: "Dr. Anjali Sharma", specialty: "Dermatologist" },
-  { name: "Dr. Vivek Kapoor", specialty: "Orthopedic Surgeon" },
-  { name: "Dr. Neha Patel", specialty: "Endocrinologist" }
-];
-
-const demoAppointments = [
-  {
-    id: "demo-1",
-    doctor: "Dr. Rahul Mehta",
-    specialty: "Cardiologist",
-    date: "2026-10-20",
-    time: "10:30",
-    status: "Upcoming"
-  },
-  {
-    id: "demo-2",
-    doctor: "Dr. Anjali Sharma",
-    specialty: "Dermatologist",
-    date: "2026-10-23",
-    time: "14:00",
-    status: "Upcoming"
-  },
-  {
-    id: "demo-3",
-    doctor: "Dr. Vivek Kapoor",
-    specialty: "Orthopedic Surgeon",
-    date: "2026-10-25",
-    time: "11:00",
-    status: "Upcoming"
-  },
-  {
-    id: "demo-4",
-    doctor: "Dr. Neha Patel",
-    specialty: "Endocrinologist",
-    date: "2026-10-28",
-    time: "16:30",
-    status: "Upcoming"
-  },
-  {
-    id: "demo-5",
-    doctor: "Dr. Anjali Sharma",
-    specialty: "Dermatologist",
-    date: "2026-09-15",
-    time: "14:00",
-    status: "Completed"
-  }
-];
-
-function loadAppointments() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved !== null) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch (error) {
-    console.error("Unable to load appointments", error);
-  }
-
-  return demoAppointments;
-}
+import {
+  cancelAppointment as cancelAppointmentApi,
+  createAppointment,
+  getAppointments,
+  getDoctors,
+} from '../api.js'
+import './Appointments.css'
 
 function getToday() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatDate(date) {
-  return new Date(date + "T00:00:00").toLocaleDateString(
-    "en-US",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric"
-    }
-  );
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 function formatTime(time) {
-  const [hours, minutes] = time.split(":");
-  const date = new Date();
-  date.setHours(Number(hours), Number(minutes), 0, 0);
+  const [hours, minutes] = time.split(':')
+  const date = new Date()
+  date.setHours(Number(hours), Number(minutes), 0, 0)
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
 
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true
-  });
+function getAppointmentId(appointment) {
+  return appointment._id || appointment.id
+}
+
+function getDoctorId(doctor) {
+  return String(
+    doctor.id || doctor._id || `${doctor.name}|${doctor.specialty}|${doctor.location || ''}`,
+  )
+}
+
+function requestError(error, fallback) {
+  if (error.status === 401) return 'Your session has expired. Please log in again.'
+  return error.message || fallback
 }
 
 export default function Appointments() {
-  const [appointments, setAppointments] = useState(loadAppointments);
-  const [activeTab, setActiveTab] = useState("Upcoming");
-  const [showForm, setShowForm] = useState(false);
-  const [message, setMessage] = useState("");
+  const [appointments, setAppointments] = useState([])
+  const [doctors, setDoctors] = useState([])
+  const [doctorsLoading, setDoctorsLoading] = useState(true)
+  const [doctorError, setDoctorError] = useState('')
+  const [doctorSearch, setDoctorSearch] = useState('')
+  const [activeTab, setActiveTab] = useState('Upcoming')
+  const [showForm, setShowForm] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [cancellingId, setCancellingId] = useState(null)
+  const [form, setForm] = useState({ doctorId: '', date: '', time: '', reason: '' })
+  const appointmentRequest = useRef(0)
+  const doctorRequest = useRef(0)
 
-  const [form, setForm] = useState({
-    doctor: doctors[0].name,
-    date: "",
-    time: ""
-  });
+  const today = getToday()
 
-  const today = getToday();
-
-  const visibleAppointments = appointments.filter((appointment) => {
-    if (activeTab === "Upcoming") {
-      return (
-        appointment.status === "Upcoming" &&
-        appointment.date >= today
-      );
-    }
-
-    return (
-      appointment.status === "Completed" ||
-      appointment.status === "Cancelled" ||
-      appointment.date < today
-    );
-  }).sort((a, b) => {
-    const first = `${a.date} ${a.time}`;
-    const second = `${b.date} ${b.time}`;
-
-    return activeTab === "Upcoming"
-      ? first.localeCompare(second)
-      : second.localeCompare(first);
-  });
-
-  function updateAppointments(updated) {
+  const loadAppointments = useCallback(async () => {
+    const currentRequest = ++appointmentRequest.current
+    setLoading(true)
+    setError('')
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      setAppointments(updated);
-      return true;
-    } catch (error) {
-      console.error("Unable to save appointments", error);
-      setMessage("Unable to save. Check your browser storage.");
-      return false;
+      const result = await getAppointments()
+      if (currentRequest !== appointmentRequest.current) return
+      const records = Array.isArray(result) ? result : result.appointments || []
+      setAppointments(Array.isArray(records) ? records : [])
+      setError('')
+    } catch (err) {
+      if (currentRequest === appointmentRequest.current) {
+        setError(requestError(err, 'Unable to load appointments. Please try again.'))
+      }
+    } finally {
+      if (currentRequest === appointmentRequest.current) setLoading(false)
     }
-  }
+  }, [])
 
-  function handleBook(event) {
-    event.preventDefault();
+  const loadDoctors = useCallback(async () => {
+    const currentRequest = ++doctorRequest.current
+    setDoctorsLoading(true)
+    setDoctorError('')
+    try {
+      const result = await getDoctors()
+      if (currentRequest !== doctorRequest.current) return
+      const records = Array.isArray(result) ? result : result.doctors || []
+      setDoctors(Array.isArray(records) ? records : [])
+      setDoctorError('')
+    } catch (err) {
+      if (currentRequest === doctorRequest.current) {
+        setDoctorError(requestError(err, 'Unable to load the demo provider directory.'))
+      }
+    } finally {
+      if (currentRequest === doctorRequest.current) setDoctorsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAppointments()
+    loadDoctors()
+    return () => {
+      appointmentRequest.current += 1
+      doctorRequest.current += 1
+    }
+  }, [loadAppointments, loadDoctors])
+
+  const visibleAppointments = useMemo(
+    () =>
+      appointments
+        .filter((appointment) => {
+          const isPastDate = appointment.date < today
+          if (activeTab === 'Upcoming') {
+            return appointment.status === 'Upcoming' && !isPastDate
+          }
+          return (
+            appointment.status === 'Completed' ||
+            appointment.status === 'Cancelled' ||
+            isPastDate
+          )
+        })
+        .sort((a, b) => {
+          const first = `${a.date} ${a.time}`
+          const second = `${b.date} ${b.time}`
+          return activeTab === 'Upcoming'
+            ? first.localeCompare(second)
+            : second.localeCompare(first)
+        }),
+    [appointments, activeTab, today],
+  )
+
+  const filteredDoctors = useMemo(() => {
+    const query = doctorSearch.trim().toLocaleLowerCase()
+    if (!query) return doctors
+    return doctors.filter((doctor) =>
+      `${doctor.name} ${doctor.specialty} ${doctor.location || ''}`
+        .toLocaleLowerCase()
+        .includes(query),
+    )
+  }, [doctors, doctorSearch])
+
+  async function handleBook(event) {
+    event.preventDefault()
+    setMessage('')
+    setError('')
 
     if (form.date < today) {
-      setMessage("Please select today or a future date.");
-      return;
+      setError('Please select today or a future date.')
+      return
     }
 
     const selectedDoctor = doctors.find(
-      (doctor) => doctor.name === form.doctor
-    );
-
+      (doctor) => getDoctorId(doctor) === form.doctorId,
+    )
     if (!selectedDoctor) {
-      setMessage("Please select a doctor.");
-      return;
+      setError('Please select a doctor from the current directory.')
+      return
     }
 
-    const conflict = appointments.some((appointment) =>
-      appointment.status === "Upcoming" &&
-      appointment.doctor === form.doctor &&
-      appointment.date === form.date &&
-      appointment.time === form.time
-    );
-
+    const conflict = appointments.some(
+      (appointment) =>
+        appointment.status === 'Upcoming' &&
+        appointment.doctor === selectedDoctor.name &&
+        appointment.date === form.date &&
+        appointment.time === form.time,
+    )
     if (conflict) {
-      setMessage("You already booked this doctor at that time.");
-      return;
+      setError('You already booked this doctor at that time.')
+      return
     }
 
-    const newAppointment = {
-      id: `${Date.now()}`,
-      doctor: selectedDoctor.name,
-      specialty: selectedDoctor.specialty,
-      date: form.date,
-      time: form.time,
-      status: "Upcoming"
-    };
+    setSubmitting(true)
+    try {
+      const result = await createAppointment({
+        doctor: selectedDoctor.name,
+        specialty: selectedDoctor.specialty,
+        date: form.date,
+        time: form.time,
+        reason: form.reason.trim(),
+      })
+      if (!result.appointment) {
+        throw new Error('The server did not return the new appointment.')
+      }
 
-    if (updateAppointments([...appointments, newAppointment])) {
-      setActiveTab("Upcoming");
-      setShowForm(false);
-      setForm({
-        doctor: doctors[0].name,
-        date: "",
-        time: ""
-      });
-      setMessage("Appointment booked successfully!");
+      setAppointments((current) => [...current, result.appointment])
+      setActiveTab('Upcoming')
+      setShowForm(false)
+      setDoctorSearch('')
+      setForm({ doctorId: '', date: '', time: '', reason: '' })
+      setMessage('Appointment saved successfully.')
+    } catch (err) {
+      setError(requestError(err, 'Unable to book appointment. Please try again.'))
+    } finally {
+      setSubmitting(false)
     }
   }
 
-  function cancelAppointment(id) {
-    if (!window.confirm("Cancel this appointment?")) return;
+  async function handleCancel(appointment) {
+    const id = getAppointmentId(appointment)
+    if (!id || !window.confirm('Cancel this appointment?')) return
 
-    const updated = appointments.map((appointment) =>
-      appointment.id === id
-        ? { ...appointment, status: "Cancelled" }
-        : appointment
-    );
-
-    if (updateAppointments(updated)) {
-      setMessage("Appointment cancelled successfully.");
+    setMessage('')
+    setError('')
+    setCancellingId(id)
+    try {
+      const result = await cancelAppointmentApi(id)
+      setAppointments((current) =>
+        current.map((item) =>
+          getAppointmentId(item) === id
+            ? result.appointment || { ...item, status: 'Cancelled' }
+            : item,
+        ),
+      )
+      setMessage('Appointment cancelled successfully.')
+    } catch (err) {
+      setError(requestError(err, 'Unable to cancel appointment. Please try again.'))
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -226,42 +234,74 @@ export default function Appointments() {
     <div className="appointments-page">
       <header className="appointments-header">
         <h1>Appointments</h1>
-
         <button
           className="book-appointment-btn"
           onClick={() => {
-            setShowForm(!showForm);
-            setMessage("");
+            setShowForm((visible) => !visible)
+            setMessage('')
+            setError('')
           }}
+          disabled={doctorsLoading || doctors.length === 0}
+          type="button"
         >
           <span>▦</span>
-          {showForm ? "Close Form" : "Book New Appointment"}
+          {showForm ? 'Close Form' : 'Book New Appointment'}
         </button>
       </header>
 
-      {message && (
-        <p className="appointment-message" role="status">
-          {message}
-        </p>
+      {message && <p className="appointment-message" role="status">{message}</p>}
+      {error && (
+        <div className="appointment-error" role="alert">
+          <span>{error}</span>
+          {!loading && !showForm && appointments.length === 0 && (
+            <button type="button" onClick={loadAppointments}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+
+      {doctorError && (
+        <div className="appointment-error" role="alert">
+          <span>{doctorError}</span>
+          {!doctorsLoading && (
+            <button type="button" onClick={loadDoctors}>Try again</button>
+          )}
+        </div>
       )}
 
       {showForm && (
         <section className="booking-form-card">
           <h2>Book New Appointment</h2>
-
           <form onSubmit={handleBook}>
+            <label htmlFor="doctor-search">Search providers by name, specialty, or location</label>
+            <input
+              id="doctor-search"
+              type="search"
+              value={doctorSearch}
+              onChange={(event) => {
+                setDoctorSearch(event.target.value)
+                setForm((current) => ({ ...current, doctorId: '' }))
+              }}
+              placeholder="e.g. cardiologist or Pune"
+              disabled={doctorsLoading || submitting}
+            />
+
             <label htmlFor="doctor">Select Doctor</label>
             <select
               id="doctor"
-              value={form.doctor}
-              onChange={(event) =>
-                setForm({ ...form, doctor: event.target.value })
-              }
+              value={form.doctorId}
+              onChange={(event) => setForm({ ...form, doctorId: event.target.value })}
               required
+              disabled={doctorsLoading || doctors.length === 0 || submitting}
             >
-              {doctors.map((doctor) => (
-                <option key={doctor.name} value={doctor.name}>
+              <option value="">
+                {filteredDoctors.length ? 'Select a demo provider' : 'No matching providers'}
+              </option>
+              {filteredDoctors.map((doctor) => (
+                <option key={getDoctorId(doctor)} value={getDoctorId(doctor)}>
                   {doctor.name} — {doctor.specialty}
+                  {doctor.location ? ` (${doctor.location})` : ''}
                 </option>
               ))}
             </select>
@@ -272,10 +312,9 @@ export default function Appointments() {
               type="date"
               min={today}
               value={form.date}
-              onChange={(event) =>
-                setForm({ ...form, date: event.target.value })
-              }
+              onChange={(event) => setForm({ ...form, date: event.target.value })}
               required
+              disabled={submitting}
             />
 
             <label htmlFor="time">Appointment Time</label>
@@ -283,103 +322,123 @@ export default function Appointments() {
               id="time"
               type="time"
               value={form.time}
-              onChange={(event) =>
-                setForm({ ...form, time: event.target.value })
-              }
+              onChange={(event) => setForm({ ...form, time: event.target.value })}
               required
+              disabled={submitting}
             />
 
-            <button type="submit" className="book-appointment-btn">
-              Confirm Booking
+            <label htmlFor="reason">Reason for visit (optional)</label>
+            <input
+              id="reason"
+              type="text"
+              maxLength={500}
+              value={form.reason}
+              onChange={(event) => setForm({ ...form, reason: event.target.value })}
+              placeholder="Brief reason for the appointment"
+              disabled={submitting}
+            />
+
+            <button
+              type="submit"
+              className="book-appointment-btn"
+              disabled={submitting || doctorsLoading || doctors.length === 0}
+            >
+              {submitting ? 'Saving…' : 'Confirm Booking'}
             </button>
           </form>
         </section>
       )}
 
-      <div className="appointment-tabs">
+      <div className="appointment-tabs" role="group" aria-label="Appointment filter">
         <button
-          className={activeTab === "Upcoming" ? "active" : ""}
-          onClick={() => setActiveTab("Upcoming")}
+          className={activeTab === 'Upcoming' ? 'active' : ''}
+          aria-pressed={activeTab === 'Upcoming'}
+          onClick={() => setActiveTab('Upcoming')}
+          type="button"
         >
           Upcoming
         </button>
-
         <button
-          className={activeTab === "Past" ? "active" : ""}
-          onClick={() => setActiveTab("Past")}
+          className={activeTab === 'Past' ? 'active' : ''}
+          aria-pressed={activeTab === 'Past'}
+          onClick={() => setActiveTab('Past')}
+          type="button"
         >
           Past
         </button>
       </div>
 
-      <section className="appointment-list">
-        {visibleAppointments.length > 0 ? (
+      <section className="appointment-list" aria-live="polite" aria-busy={loading}>
+        {loading ? (
+          <div className="appointments-empty" role="status">
+            <p>Loading your appointments…</p>
+          </div>
+        ) : visibleAppointments.length > 0 ? (
           visibleAppointments.map((appointment) => {
-            const initials = appointment.doctor
-              .replace("Dr. ", "")
-              .split(" ")
+            const id = getAppointmentId(appointment)
+            const doctorName = appointment.doctor || 'Doctor'
+            const initials = doctorName
+              .replace(/^Dr\.\s*/i, '')
+              .split(' ')
+              .filter(Boolean)
               .map((word) => word[0])
-              .join("")
+              .join('')
               .slice(0, 2)
-              .toUpperCase();
-
-            const canCancel =
-              appointment.status === "Upcoming" &&
-              appointment.date >= today;
+              .toUpperCase() || 'D'
+            const status = appointment.status || 'Upcoming'
+            const canCancel = status === 'Upcoming' && appointment.date >= today
 
             return (
-              <article className="appointment-row" key={appointment.id}>
-                <div className="doctor-avatar">
-                  {initials}
-                </div>
-
+              <article className="appointment-row" key={id || `${doctorName}-${appointment.date}-${appointment.time}`}>
+                <div className="doctor-avatar">{initials}</div>
                 <div className="doctor-details">
-                  <h3>{appointment.doctor}</h3>
+                  <h3>{doctorName}</h3>
                   <p>{appointment.specialty}</p>
-
                   <div className="appointment-datetime">
                     <span>▦ {formatDate(appointment.date)}</span>
                     <span className="datetime-divider">|</span>
                     <span>◷ {formatTime(appointment.time)}</span>
                   </div>
+                  {appointment.reason && (
+                    <p className="appointment-reason">Reason: {appointment.reason}</p>
+                  )}
                 </div>
 
                 <div className="appointment-row-actions">
-                  <span
-                    className={`appointment-status ${appointment.status.toLowerCase()}`}
-                  >
+                  <span className={`appointment-status ${status.toLowerCase()}`}>
                     <span className="status-dot">●</span>
-                    {appointment.status}
+                    {status}
                   </span>
-
                   {canCancel && (
                     <button
                       className="cancel-appointment-btn"
-                      onClick={() => cancelAppointment(appointment.id)}
+                      onClick={() => handleCancel(appointment)}
+                      disabled={cancellingId === id}
+                      type="button"
                     >
-                      Cancel
+                      {cancellingId === id ? 'Cancelling…' : 'Cancel'}
                     </button>
                   )}
                 </div>
               </article>
-            );
+            )
           })
         ) : (
           <div className="appointments-empty">
             <h3>No {activeTab.toLowerCase()} appointments</h3>
             <p>
-              {activeTab === "Upcoming"
-                ? "Book a new appointment to see it here."
-                : "Your past or cancelled appointments will appear here."}
+              {activeTab === 'Upcoming'
+                ? 'Book a new appointment to see it here.'
+                : 'Your past or cancelled appointments will appear here.'}
             </p>
           </div>
         )}
       </section>
 
       <p className="appointments-disclaimer">
-        Educational demo only. Doctor availability is not verified.
+        Demo provider directory only. These are sample records, not verified real-world clinicians.
+        Doctor availability and time slots are not verified.
       </p>
     </div>
-  );
+  )
 }
-

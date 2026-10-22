@@ -54,6 +54,13 @@ export const HomeIcon = (props) => (
   </Icon>
 )
 
+export const HospitalIcon = (props) => (
+  <Icon {...props}>
+    <path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V21" />
+    <path d="M2.5 21h19M9 21v-4h6v4M12 7v6M9 10h6" />
+  </Icon>
+)
+
 export const UserIcon = (props) => (
   <Icon {...props}>
     <circle cx="12" cy="8" r="3.75" />

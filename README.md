@@ -20,7 +20,8 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Registration, login, logout, and session restoration
 - Public-only auth pages and protected workspace routes
 - Persistent, account-specific profile editing
-- Per-user appointment booking and cancellation with active-provider verification
+- Per-user appointment booking/cancellation with active-provider verification and a validated
+  snapshot of the hospital selected from the live directory
 - Synthetic doctor directory with specialty/location filtering
 - Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
   and optional Google Places listings/photos
@@ -97,7 +98,7 @@ npm run preview
 | `/` | Public | Landing page |
 | `/login`, `/register` | Signed-out only | Account access |
 | `/profile` | Authenticated | Persistent user profile |
-| `/appointments` | Authenticated | Per-user appointments |
+| `/appointments` | Authenticated | Per-user appointments with hospital selection |
 | `/hospitals` | Authenticated | Live map-based hospital directory |
 | `/medicines` | Authenticated | Medicine and prescription lookup |
 | `/prescriptions` | Authenticated | Prescription workspace placeholder |
@@ -113,7 +114,7 @@ npm run preview
 | `GET /api/auth/me` | Restore the current user |
 | `PATCH /api/auth/profile` | Update allowed profile fields |
 | `GET /api/appointments` | List only the session user's appointments |
-| `POST /api/appointments` | Book an appointment for the session user |
+| `POST /api/appointments` | Book with a validated hospital snapshot for the session user |
 | `PATCH /api/appointments/:id/cancel` | Cancel an owned upcoming appointment |
 | `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |

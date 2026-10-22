@@ -8,6 +8,8 @@ function profileFromUser(user) {
     fullName: user?.fullName || '',
     dob: user?.dob || '',
     phone: user?.phone || '',
+    city: user?.city || '',
+    state: user?.state || '',
     email: user?.email || '',
     address: user?.address || '',
     bloodType: user?.bloodType || '',
@@ -93,7 +95,13 @@ export default function Profile() {
     const constraints = {
       fullName: { minLength: 2, maxLength: 80 },
       email: { maxLength: 254 },
-      phone: { maxLength: 40 },
+      phone: {
+        maxLength: 20,
+        pattern: '[+()0-9\\s.-]{7,20}',
+        title: 'Use 7–20 characters: digits, spaces, and + ( ) . - only',
+      },
+      city: { maxLength: 80 },
+      state: { maxLength: 80 },
       address: { maxLength: 240 },
       emergencyName: { maxLength: 80 },
       relationship: { maxLength: 60 },
@@ -129,7 +137,7 @@ export default function Profile() {
           <div className="profile-avatar">{getInitials(patient.fullName)}</div>
           <div>
             <h1>{patient.fullName}</h1>
-            <p>{user?.role || 'Patient'}</p>
+            <p className="capitalize">{user?.role || 'patient'}</p>
           </div>
         </div>
 
@@ -167,6 +175,8 @@ export default function Profile() {
             {renderField('Full Name', 'fullName', patient.fullName)}
             {renderField('Date of Birth', 'dob', patient.dob, 'date')}
             {renderField('Phone', 'phone', patient.phone, 'tel')}
+            {renderField('City', 'city', patient.city)}
+            {renderField('State', 'state', patient.state)}
             {renderField('Email', 'email', patient.email, 'email')}
             {renderField('Address', 'address', patient.address)}
           </section>

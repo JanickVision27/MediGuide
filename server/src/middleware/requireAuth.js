@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
-import User from "../models/user.js";
+import User from "../models/User.js";
 import {
   clearSession,
   SESSION_COOKIE,
@@ -13,7 +13,7 @@ function rejectSession(res, message = "Please sign in to continue.") {
   return res.status(401).json({ message });
 }
 
-export default async function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const token = req.cookies?.[SESSION_COOKIE];
   if (!token) return rejectSession(res);
 
@@ -33,7 +33,12 @@ export default async function requireAuth(req, res, next) {
 
   try {
     const user = await User.findById(payload.sub);
-    if (!user) return rejectSession(res);
+    if (!user) {
+      return rejectSession(
+        res,
+        "Your session is no longer valid. Please sign in again."
+      );
+    }
 
     req.user = user;
     req.userId = user._id;
@@ -42,3 +47,5 @@ export default async function requireAuth(req, res, next) {
     return next(error);
   }
 }
+
+export default requireAuth;

@@ -1,33 +1,54 @@
 import bcrypt from "bcryptjs";
 
-import User from "../models/user.js";
+import User from "../models/User.js";
 import { clearSession, createSession } from "../utils/session.js";
 
 const BCRYPT_ROUNDS = 12;
-// Used to make an unknown-email login perform a comparable bcrypt operation.
+// Make unknown-email logins perform a comparable bcrypt operation.
 const DUMMY_PASSWORD_HASH =
   "$2b$12$ldgVALHVd3.ALLIk0g763..jNyVmTORREW7mR2TooS8tki310MB6m";
 
-function isDuplicateEmail(error) {
-  // Email is the only unique user field; drivers do not all expose keyPattern.
-  return error?.code === 11000;
+function publicUser(user) {
+  return {
+    id: user._id.toString(),
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    dob: user.dob || "",
+    phone: user.phone || "",
+    city: user.city || "",
+    state: user.state || "",
+    address: user.address || "",
+    bloodType: user.bloodType || "",
+    allergies: Array.isArray(user.allergies) ? [...user.allergies] : [],
+    medications: Array.isArray(user.medications) ? [...user.medications] : [],
+    emergencyName: user.emergencyName || "",
+    relationship: user.relationship || "",
+    emergencyPhone: user.emergencyPhone || "",
+    emergencyAddress: user.emergencyAddress || "",
+  };
 }
 
 export async function register(req, res, next) {
   try {
     const { fullName, email, password } = req.body;
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await User.create({ fullName, email, passwordHash });
+    const user = await User.create({
+      fullName,
+      email,
+      passwordHash,
+      role: "patient",
+    });
 
     createSession(res, user._id);
     return res.status(201).json({
       message: "Account created successfully.",
-      user,
+      user: publicUser(user),
     });
   } catch (error) {
-    if (isDuplicateEmail(error)) {
+    if (error?.code === 11000) {
       return res.status(409).json({
-        message: "An account already exists for this email address.",
+        message: "An account with this email already exists. Try signing in instead.",
       });
     }
     return next(error);
@@ -52,15 +73,15 @@ export async function login(req, res, next) {
     createSession(res, user._id);
     return res.status(200).json({
       message: "Signed in successfully.",
-      user,
+      user: publicUser(user),
     });
   } catch (error) {
     return next(error);
   }
 }
 
-export function getCurrentUser(req, res) {
-  return res.status(200).json({ user: req.user });
+export function currentUser(req, res) {
+  return res.status(200).json({ user: publicUser(req.user) });
 }
 
 export function logout(_req, res) {
@@ -75,10 +96,10 @@ export async function updateProfile(req, res, next) {
 
     return res.status(200).json({
       message: "Profile updated successfully.",
-      user: req.user,
+      user: publicUser(req.user),
     });
   } catch (error) {
-    if (isDuplicateEmail(error)) {
+    if (error?.code === 11000) {
       return res.status(409).json({
         message: "Another account already uses this email address.",
       });

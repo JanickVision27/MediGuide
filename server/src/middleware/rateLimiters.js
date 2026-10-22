@@ -6,8 +6,8 @@ const MAX_AI_REQUESTS_PER_WINDOW = 10;
 /** Limit repeated credential attempts while allowing normal shared-IP usage. */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: "draft-7",
+  limit: 10,
+  standardHeaders: "draft-8",
   legacyHeaders: false,
   message: {
     message: "Too many sign-in attempts. Please wait 15 minutes and try again.",

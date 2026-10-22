@@ -31,11 +31,14 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["Patient"],
-      default: "Patient",
+      enum: ["patient"],
+      default: "patient",
+      immutable: true,
     },
     dob: optionalText(10),
-    phone: optionalText(40),
+    phone: optionalText(20),
+    city: optionalText(80),
+    state: optionalText(80),
     address: optionalText(240),
     bloodType: {
       type: String,
@@ -77,6 +80,4 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-const User = mongoose.model("User", userSchema);
-
-export default User;
+export default mongoose.model("User", userSchema);

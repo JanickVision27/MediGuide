@@ -7,26 +7,27 @@ import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
 
+import { seedDemoDoctors } from "./controllers/doctors.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
-import {
-  doctorRouter,
-  hospitalRouter,
-} from "./routes/directoryRoutes.js";
+import doctorRoutes from "./routes/doctorRoutes.js";
+import hospitalRoutes from "./routes/hospitalRoutes.js";
 import medicineRoutes from "./routes/medicineRoutes.js";
+import { validateSessionConfiguration } from "./utils/session.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 
-dotenv.config({
-  path: path.resolve(currentDirectory, "../../.env"),
-});
+dotenv.config({ path: path.resolve(currentDirectory, "../../.env") });
 
 const app = express();
 const port = process.env.PORT || 5000;
-const allowedOrigins = (process.env.CLIENT_URL ||
-  "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173")
+const allowedOrigins = (
+  process.env.CLIENT_ORIGIN ||
+  process.env.CLIENT_URL ||
+  "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173"
+)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -44,15 +45,15 @@ app.use(
     },
   })
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10kb" }));
 app.use(cookieParser());
 
+app.use("/api", chatRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
-app.use("/api/hospitals", hospitalRouter);
-app.use("/api/doctors", doctorRouter);
+app.use("/api/doctors", doctorRoutes);
+app.use("/api/hospitals", hospitalRoutes);
 app.use("/api/medicines", medicineRoutes);
-app.use("/api", chatRoutes);
 
 function healthCheck(_req, res) {
   return res.status(200).json({
@@ -62,9 +63,7 @@ function healthCheck(_req, res) {
   });
 }
 
-app.get("/api/health", healthCheck);
-// Retain the old health path for existing local tooling.
-app.get("/health", healthCheck);
+app.get(["/health", "/api/health"], healthCheck);
 
 app.use("/api", (_req, res) => {
   return res.status(404).json({ message: "API endpoint not found." });
@@ -76,7 +75,6 @@ app.use((error, _req, res, _next) => {
   if (error?.type === "entity.too.large") {
     return res.status(413).json({ message: "Request body is too large." });
   }
-
   if (error?.type === "entity.parse.failed") {
     return res.status(400).json({ message: "Request body contains invalid JSON." });
   }
@@ -86,29 +84,40 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-async function connectToDatabase() {
+export async function startServer() {
   const mongoUri = process.env.MONGODB_URI?.trim();
-
   if (!mongoUri) {
-    console.error("MONGODB_URI is missing from your configuration.");
-    return;
+    throw new Error("MONGODB_URI is missing from the root .env file.");
+  }
+  if (!mongoUri.startsWith("mongodb://") && !mongoUri.startsWith("mongodb+srv://")) {
+    throw new Error(
+      "Invalid MongoDB URI format. It must start with mongodb:// or mongodb+srv://."
+    );
+  }
+  if (/\s/.test(mongoUri)) {
+    throw new Error("MONGODB_URI contains whitespace. Check your .env file.");
   }
 
-  try {
-    await mongoose.connect(mongoUri);
-    console.log("MongoDB connected successfully");
-  } catch (error) {
-    console.error("MongoDB connection failed:", error.message);
-  }
-}
+  // Fail fast on insecure/missing production auth configuration.
+  validateSessionConfiguration();
 
-// Export the Express app for tests, but only listen when run as the entry point.
-if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
-  app.listen(port, () => {
+  await mongoose.connect(mongoUri);
+  console.log("MongoDB connected successfully");
+
+  await seedDemoDoctors();
+  console.log("Synthetic demo doctors synchronized");
+
+  return app.listen(port, () => {
     console.log(`MediGuide API listening on http://localhost:${port}`);
   });
-  void connectToDatabase();
 }
 
-export { connectToDatabase };
+// Export the app for tests; only connect/listen when run as the entry point.
+if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
+  startServer().catch((error) => {
+    console.error("Failed to start MediGuide API:", error.message);
+    process.exit(1);
+  });
+}
+
 export default app;

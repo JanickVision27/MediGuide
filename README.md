@@ -22,6 +22,7 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Persistent, account-specific profile editing
 - Per-user appointment booking/cancellation with active-provider verification and a validated
   snapshot of the hospital selected from the live directory
+- Optional Resend appointment-saved notifications, including the selected hospital
 - Synthetic doctor directory with specialty/location filtering
 - Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
   and optional Google Places listings/photos
@@ -56,6 +57,24 @@ internet connectivity; fresh OpenStreetMap results are cached in MongoDB for 24 
 records are clearly labelled if used during an outage. For a public deployment, set
 `HOSPITAL_DIRECTORY_USER_AGENT` to a value identifying the project and a contact, in line with
 Nominatim's usage policy.
+
+#### Optional appointment email notifications
+
+Add your own Resend key to the **root `.env`**, not the frontend environment:
+
+```dotenv
+RESEND_API_KEY=re_your_actual_key
+MAIL_FROM=onboarding@resend.dev
+```
+
+Restart the API after changing `.env`. For Resend's test sender, follow its recipient restrictions.
+To notify other recipients, verify a domain in Resend and change `MAIL_FROM` to an address on that
+domain (for example, `MediGuide <appointments@your-domain.com>`). Test by booking an appointment
+with an allowed account email, then check the inbox/spam folder and API logs.
+
+Without `RESEND_API_KEY`, email notifications are skipped. Delivery runs in the background: an
+email failure is logged but does not block or roll back a saved appointment. A successful booking
+response therefore does not guarantee email delivery. Never commit the real key or share it in chat.
 
 ### 2. Start the API
 
@@ -135,6 +154,7 @@ server/src/
 ├── middleware/requireAuth.js     # Verifies cookie session and loads the user
 ├── models/                      # User, Doctor, Hospital, and Appointment schemas
 ├── routes/                      # Express API routes
+├── services/                    # AI, lookup, and Resend email services
 ├── utils/session.js              # JWT and secure-cookie helpers
 └── validators/                  # Zod request validation
 ```
@@ -146,6 +166,8 @@ server/src/
 - Authentication requests are rate-limited, and login failures use a generic message.
 - Appointment reads and writes are scoped by the verified server-side session.
 - Hospital search/photo endpoints are rate-limited; Google keys remain on the server.
+- Resend keys and patient recipient addresses are used only by the server; notification content
+  is HTML-escaped and recipients come from the authenticated account, not the booking request.
 - Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN`, and use HTTPS in production.
 - This remains an educational demo, not a production healthcare or PHI-storage solution.
 

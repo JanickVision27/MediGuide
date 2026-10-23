@@ -47,10 +47,10 @@ export function LogoMark({ className = 'h-9 w-9' }) {
   )
 }
 
-export const HomeIcon = (props) => (
+export const HospitalIcon = (props) => (
   <Icon {...props}>
-    <path d="M3 9.75 12 3l9 6.75V19.5A1.5 1.5 0 0 1 19.5 21h-15A1.5 1.5 0 0 1 3 19.5z" />
-    <path d="M9.25 21v-6.5h5.5V21" />
+    <path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V21" />
+    <path d="M2.5 21h19M9 21v-4h6v4M12 7v6M9 10h6" />
   </Icon>
 )
 
@@ -127,5 +127,26 @@ export const LockIcon = (props) => (
   <Icon {...props}>
     <rect x="4.75" y="10.25" width="14.5" height="10.5" rx="2.25" />
     <path d="M8.25 10.25V7.5a3.75 3.75 0 0 1 7.5 0v2.75" />
+  </Icon>
+)
+
+export const CheckCircleIcon = (props) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8.25 12.25l2.5 2.5 5-5.25" />
+  </Icon>
+)
+
+export const InfoCircleIcon = (props) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5.25M12 7.75h.01" />
+  </Icon>
+)
+
+export const AlertOctagonIcon = (props) => (
+  <Icon {...props}>
+    <path d="M8.2 3.25h7.6l5.95 5.95v7.6l-5.95 5.95H8.2L2.25 16.8V9.2z" />
+    <path d="M12 8v4.5M12 16h.01" />
   </Icon>
 )

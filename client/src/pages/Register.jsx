@@ -194,9 +194,6 @@ export default function Register() {
                 Sign in
               </Link>
             </p>
-            <p className="mt-7 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-              Educational demo only. Do not use real medical information or sensitive personal details.
-            </p>
           </div>
         </section>
       </div>

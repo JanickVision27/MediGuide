@@ -5,6 +5,8 @@ import {
   loginUser as apiLogin,
   logoutUser as apiLogout,
   registerUser as apiRegister,
+  deleteProfilePhoto as apiDeleteProfilePhoto,
+  uploadProfilePhoto as apiUploadProfilePhoto,
   updateUserProfile,
 } from '../api.js'
 
@@ -13,6 +15,7 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [profilePhotoVersion, setProfilePhotoVersion] = useState(0)
 
   const refreshUser = useCallback(async () => {
     try {
@@ -57,9 +60,34 @@ export function AuthProvider({ children }) {
     return result.user
   }, [])
 
+  const saveProfilePhoto = useCallback(async (file) => {
+    const result = await apiUploadProfilePhoto(file)
+    setUser(result.user)
+    setProfilePhotoVersion((version) => version + 1)
+    return result.user
+  }, [])
+
+  const removeProfilePhoto = useCallback(async () => {
+    const result = await apiDeleteProfilePhoto()
+    setUser(result.user)
+    setProfilePhotoVersion((version) => version + 1)
+    return result.user
+  }, [])
+
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, refreshUser, saveProfile }),
-    [user, loading, login, register, logout, refreshUser, saveProfile],
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      refreshUser,
+      saveProfile,
+      saveProfilePhoto,
+      removeProfilePhoto,
+      profilePhotoVersion,
+    }),
+    [user, loading, login, register, logout, refreshUser, saveProfile, saveProfilePhoto, removeProfilePhoto, profilePhotoVersion],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

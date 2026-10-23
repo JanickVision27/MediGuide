@@ -10,6 +10,8 @@ import ChatUI from './pages/ChatUI.jsx'
 import Home from './pages/Home.jsx'
 import Hospitals from './pages/Hospitals.jsx'
 import Login from './pages/Login.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 import Medicines from './pages/Medicines.jsx'
 import Prescriptions from './pages/Prescriptions.jsx'
 import Profile from './pages/Profile.jsx'
@@ -28,6 +30,8 @@ export default function App() {
             <Route index element={<Home />} />
             <Route path="login" element={publicAuthPage(<Login />)} />
             <Route path="register" element={publicAuthPage(<Register />)} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
           </Route>
 
           <Route
@@ -38,6 +42,7 @@ export default function App() {
             }
           >
             <Route path="profile" element={<Profile />} />
+            <Route path="dashboard" element={<Navigate to="/appointments" replace />} />
             <Route path="medicines" element={<Medicines />} />
             <Route path="prescriptions" element={<Prescriptions />} />
             <Route path="hospitals" element={<Hospitals />} />

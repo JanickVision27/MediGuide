@@ -1,39 +1,43 @@
-import { Link, NavLink } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 
+import UserAvatar from '../UserAvatar.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 import {
-  LogoMark,
-  UserIcon,
-  PillIcon,
   CalendarIcon,
-  ChatIcon,
   CloseIcon,
+  LogoMark,
+  PillIcon,
   ShieldCheckIcon,
+  UserIcon,
 } from '../icons.jsx'
 
-/**
- * Sidebar navigation model.
- *
- * Single source of truth - to add a page, drop an entry here and register the
- * matching <Route /> in `src/App.jsx`.
- */
 const NAV_ITEMS = [
   { to: '/profile', label: 'Profile', Icon: UserIcon },
-  { to: '/prescriptions', label: 'Prescriptions', Icon: PillIcon },
+  { to: '/medicines', label: 'Medicine & Prescription', Icon: PillIcon },
   { to: '/appointments', label: 'Appointments', Icon: CalendarIcon },
-  { to: '/chat', label: 'ChatUI', Icon: ChatIcon },
 ]
 
-/**
- * Sidebar - persistent primary navigation.
- *
- * Desktop (lg+): fixed to the left edge, full height, always visible.
- * Mobile:        off-canvas drawer controlled by the `open` / `onClose` props
- *                from <Layout />, with a scrim behind it.
- */
 export default function Sidebar({ open = false, onClose }) {
+  const navigate = useNavigate()
+  const { user, logout, profilePhotoVersion } = useAuth()
+  const [signingOut, setSigningOut] = useState(false)
+
+  async function handleLogout() {
+    setSigningOut(true)
+    try {
+      await logout()
+    } catch {
+      // AuthContext still clears local state if the network request fails.
+    } finally {
+      onClose?.()
+      navigate('/', { replace: true })
+      setSigningOut(false)
+    }
+  }
+
   return (
     <>
-      {/* Scrim - mobile only */}
       <div
         onClick={onClose}
         aria-hidden="true"
@@ -45,17 +49,12 @@ export default function Sidebar({ open = false, onClose }) {
       <aside
         id="sidebar"
         aria-label="Main navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white
-                    transition-transform duration-300 ease-in-out
-                    lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
       >
-        {/* ---------------- Brand ---------------- */}
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-5">
-          <Link
-            to="/"
-            className="flex flex-1 items-center gap-3 rounded-lg"
-            aria-label="MediGuide home"
-          >
+          <Link to="/appointments" className="flex flex-1 items-center gap-3 rounded-lg" aria-label="MediGuide appointments">
             <LogoMark className="h-10 w-10 shrink-0" />
             <span className="min-w-0">
               <span className="block truncate text-lg font-extrabold leading-tight tracking-tight text-slate-900">
@@ -66,8 +65,6 @@ export default function Sidebar({ open = false, onClose }) {
               </span>
             </span>
           </Link>
-
-          {/* Close button - mobile only */}
           <button
             type="button"
             onClick={onClose}
@@ -78,12 +75,10 @@ export default function Sidebar({ open = false, onClose }) {
           </button>
         </div>
 
-        {/* ---------------- Navigation ---------------- */}
         <nav className="scrollbar-slim flex-1 overflow-y-auto px-3 py-5">
           <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Menu
+            Workspace
           </p>
-
           <ul className="space-y-1">
             {NAV_ITEMS.map(({ to, label, Icon }) => (
               <li key={to}>
@@ -99,7 +94,6 @@ export default function Sidebar({ open = false, onClose }) {
                 >
                   {({ isActive }) => (
                     <>
-                      {/* Active indicator bar */}
                       <span
                         aria-hidden="true"
                         className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-600 transition-opacity duration-150 ${
@@ -108,9 +102,7 @@ export default function Sidebar({ open = false, onClose }) {
                       />
                       <Icon
                         className={`h-5 w-5 shrink-0 transition-colors duration-150 ${
-                          isActive
-                            ? 'text-brand-600'
-                            : 'text-slate-400 group-hover:text-slate-600'
+                          isActive ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'
                         }`}
                       />
                       <span className="truncate">{label}</span>
@@ -122,8 +114,26 @@ export default function Sidebar({ open = false, onClose }) {
           </ul>
         </nav>
 
-        {/* ---------------- Footer ---------------- */}
         <div className="border-t border-slate-200 px-4 py-4">
+          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 px-3 py-3">
+            <UserAvatar
+              user={user}
+              photoVersion={profilePhotoVersion}
+              className="h-11 w-11 text-sm"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-800">{user?.fullName}</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500">{user?.email}</p>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={signingOut}
+                className="mt-2 text-xs font-bold text-brand-700 hover:text-brand-900 disabled:opacity-60"
+              >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </div>
+          </div>
           <div className="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5">
             <ShieldCheckIcon className="mt-px h-4 w-4 shrink-0 text-brand-600" />
             <p className="text-[11px] leading-relaxed text-slate-500">

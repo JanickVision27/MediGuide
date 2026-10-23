@@ -61,16 +61,35 @@ function detailRow(label, value) {
   </tr>`;
 }
 
-export function getPasswordResetAppUrl() {
-  const configured = process.env.APP_URL?.trim();
-  if (!configured) return null;
+function normalizeAppUrl(value) {
   try {
-    const url = new URL(configured);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
-    return url.toString().replace(/\/$/, "");
+    const url = new URL(value);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username || url.password || url.search || url.hash
+    ) {
+      return null;
+    }
+    return url.toString().replace(/\/+$/, "");
   } catch {
     return null;
   }
+}
+
+export function getPasswordResetAppUrl() {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return normalizeAppUrl(configured);
+
+  // Most deployments already configure the frontend origin for CORS. Reuse it
+  // for email links instead of silently disabling delivery when APP_URL is absent.
+  const fallbackOrigins = (
+    process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || ""
+  ).split(",");
+  for (const origin of fallbackOrigins) {
+    const normalized = normalizeAppUrl(origin.trim());
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 export function isPasswordResetEmailConfigured() {

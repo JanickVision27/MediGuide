@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 
+import UserAvatar from '../UserAvatar.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import {
   CalendarIcon,
@@ -19,7 +20,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ open = false, onClose }) {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, profilePhotoVersion } = useAuth()
   const [signingOut, setSigningOut] = useState(false)
 
   async function handleLogout() {
@@ -53,7 +54,7 @@ export default function Sidebar({ open = false, onClose }) {
         }`}
       >
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-5">
-          <Link to="/" className="flex flex-1 items-center gap-3 rounded-lg" aria-label="MediGuide home">
+          <Link to="/appointments" className="flex flex-1 items-center gap-3 rounded-lg" aria-label="MediGuide appointments">
             <LogoMark className="h-10 w-10 shrink-0" />
             <span className="min-w-0">
               <span className="block truncate text-lg font-extrabold leading-tight tracking-tight text-slate-900">
@@ -114,17 +115,24 @@ export default function Sidebar({ open = false, onClose }) {
         </nav>
 
         <div className="border-t border-slate-200 px-4 py-4">
-          <div className="mb-3 rounded-xl border border-slate-200 px-3 py-2.5">
-            <p className="truncate text-sm font-semibold text-slate-800">{user?.fullName}</p>
-            <p className="mt-0.5 truncate text-xs text-slate-500">{user?.email}</p>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={signingOut}
-              className="mt-2 text-xs font-bold text-brand-700 hover:text-brand-900 disabled:opacity-60"
-            >
+          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 px-3 py-3">
+            <UserAvatar
+              user={user}
+              photoVersion={profilePhotoVersion}
+              className="h-11 w-11 text-sm"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-800">{user?.fullName}</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500">{user?.email}</p>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={signingOut}
+                className="mt-2 text-xs font-bold text-brand-700 hover:text-brand-900 disabled:opacity-60"
+              >
               {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
+              </button>
+            </div>
           </div>
           <div className="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5">
             <ShieldCheckIcon className="mt-px h-4 w-4 shrink-0 text-brand-600" />

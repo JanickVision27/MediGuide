@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 
+import UserAvatar from '../components/UserAvatar.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { PROFILE_PHOTO_ACCEPT, validateProfilePhoto } from '../utils/profilePhoto.js'
 import './Profile.css'
 
 function profileFromUser(user) {
@@ -22,18 +25,6 @@ function profileFromUser(user) {
   }
 }
 
-function getInitials(fullName) {
-  return (
-    fullName
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((name) => name[0].toUpperCase())
-      .join('') || 'U'
-  )
-}
-
 function formatDate(value) {
   if (!value) return 'Not provided'
   return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', {
@@ -44,12 +35,23 @@ function formatDate(value) {
 }
 
 export default function Profile() {
-  const { user, saveProfile } = useAuth()
+  const location = useLocation()
+  const {
+    user,
+    saveProfile,
+    saveProfilePhoto,
+    removeProfilePhoto,
+    profilePhotoVersion,
+  } = useAuth()
   const [formData, setFormData] = useState(() => profileFromUser(user))
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [photoError, setPhotoError] = useState(location.state?.profilePhotoWarning || '')
+  const [photoMessage, setPhotoMessage] = useState('')
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const photoInput = useRef(null)
 
   const patient = profileFromUser(user)
 
@@ -89,6 +91,41 @@ export default function Profile() {
     setFormData(profileFromUser(user))
     setEditing(false)
     setError('')
+  }
+
+  async function handlePhotoChange(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const validationError = validateProfilePhoto(file)
+    setPhotoError(validationError)
+    setPhotoMessage('')
+    if (validationError) return
+
+    setPhotoSaving(true)
+    try {
+      await saveProfilePhoto(file)
+      setPhotoMessage('Profile photo updated.')
+    } catch (err) {
+      setPhotoError(err.message || 'Unable to save the profile photo.')
+    } finally {
+      setPhotoSaving(false)
+    }
+  }
+
+  async function handlePhotoRemove() {
+    setPhotoSaving(true)
+    setPhotoError('')
+    setPhotoMessage('')
+    try {
+      await removeProfilePhoto()
+      setPhotoMessage('Profile photo removed.')
+    } catch (err) {
+      setPhotoError(err.message || 'Unable to remove the profile photo.')
+    } finally {
+      setPhotoSaving(false)
+    }
   }
 
   function renderField(label, name, value, type = 'text') {
@@ -134,10 +171,45 @@ export default function Profile() {
     <div className="profile-page">
       <header className="profile-header">
         <div className="profile-identity">
-          <div className="profile-avatar">{getInitials(patient.fullName)}</div>
+          <div className="profile-avatar-control">
+            <UserAvatar
+              user={user}
+              photoVersion={profilePhotoVersion}
+              className="profile-avatar"
+            />
+            <div className="profile-photo-actions">
+              <button
+                type="button"
+                className="profile-photo-btn"
+                onClick={() => photoInput.current?.click()}
+                disabled={photoSaving}
+              >
+                {photoSaving ? 'Saving photo…' : user?.profilePhotoUpdatedAt ? 'Change photo' : 'Add photo'}
+              </button>
+              {user?.profilePhotoUpdatedAt && (
+                <button
+                  type="button"
+                  className="profile-photo-remove"
+                  onClick={handlePhotoRemove}
+                  disabled={photoSaving}
+                >
+                  Remove
+                </button>
+              )}
+              <input
+                ref={photoInput}
+                className="profile-photo-input"
+                type="file"
+                accept={PROFILE_PHOTO_ACCEPT}
+                aria-label="Choose a profile photo"
+                onChange={handlePhotoChange}
+                disabled={photoSaving}
+              />
+            </div>
+          </div>
           <div>
             <h1>{patient.fullName}</h1>
-            <p className="capitalize">{user?.role || 'patient'}</p>
+            <p className="patient-role">{user?.role || 'patient'}</p>
           </div>
         </div>
 
@@ -156,6 +228,9 @@ export default function Profile() {
           </button>
         )}
       </header>
+
+      {photoError && <div className="profile-error" role="alert">{photoError}</div>}
+      {photoMessage && <div className="profile-success" role="status">{photoMessage}</div>}
 
       {saved && (
         <div className="profile-success" role="status">

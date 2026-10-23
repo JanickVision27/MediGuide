@@ -15,6 +15,9 @@ import doctorRoutes from "./routes/doctorRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import medicineRoutes from "./routes/medicineRoutes.js";
 import { validateSessionConfiguration } from "./utils/session.js";
+import { startAppointmentReminderScheduler } from "./services/appointmentReminderScheduler.js";
+import Appointment from "./models/Appointment.js";
+import InAppNotification from "./models/InAppNotification.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -104,8 +107,13 @@ export async function startServer() {
   await mongoose.connect(mongoUri);
   console.log("MongoDB connected successfully");
 
+  await Promise.all([Appointment.init(), InAppNotification.init()]);
+
   await seedDemoDoctors();
   console.log("Synthetic demo doctors synchronized");
+
+  startAppointmentReminderScheduler();
+  console.log("Persistent appointment reminder scheduler started");
 
   return app.listen(port, () => {
     console.log(`MediGuide API listening on http://localhost:${port}`);

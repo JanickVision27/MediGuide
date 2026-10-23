@@ -7,6 +7,7 @@ import {
   getDoctors,
   searchHospitals,
 } from '../api.js'
+import { CalendarIcon, CloseIcon, HospitalIcon } from '../components/icons.jsx'
 import './Appointments.css'
 
 function getToday() {
@@ -260,6 +261,16 @@ export default function Appointments() {
     [appointments, activeTab, today],
   )
 
+  const upcomingCount = appointments.filter(
+    (appointment) => appointment.status === 'Upcoming' && appointment.date >= today,
+  ).length
+  const pastCount = appointments.filter(
+    (appointment) =>
+      appointment.status === 'Completed' ||
+      appointment.status === 'Cancelled' ||
+      appointment.date < today,
+  ).length
+
   const availableCities = useMemo(
     () => [...new Set(doctors.map((doctor) => doctor.location?.trim()).filter(Boolean))]
       .sort((first, second) => first.localeCompare(second, 'en-IN')),
@@ -502,15 +513,19 @@ export default function Appointments() {
   return (
     <div className="appointments-page">
       <header className="appointments-header">
-        <h1>Appointments</h1>
+        <div className="appointments-heading">
+          <span className="appointments-eyebrow">Your care schedule</span>
+          <h1>Appointments</h1>
+          <p>Book a visit and keep track of your upcoming care.</p>
+        </div>
         <button
           className="book-appointment-btn"
           onClick={toggleBookingForm}
           disabled={doctorsLoading || doctors.length === 0 || submitting}
           type="button"
         >
-          <span>▦</span>
-          {showForm ? 'Close Form' : 'Book New Appointment'}
+          {showForm ? <CloseIcon /> : <CalendarIcon />}
+          {showForm ? 'Close form' : 'Book new appointment'}
         </button>
       </header>
 
@@ -536,83 +551,108 @@ export default function Appointments() {
       )}
 
       {showForm && (
-        <section className="booking-form-card">
-          <h2>Book New Appointment</h2>
+        <section className="booking-form-card" aria-labelledby="booking-form-title">
+          <div className="booking-form-heading">
+            <div>
+              <span className="booking-eyebrow">Appointment details</span>
+              <h2 id="booking-form-title">Book a new appointment</h2>
+              <p>Choose a provider, a time, and a mapped hospital location.</p>
+            </div>
+            <span className="booking-required-note">* Required fields</span>
+          </div>
           <form onSubmit={handleBook}>
-            <label htmlFor="appointment-location">City for provider and hospital</label>
-            <select
-              id="appointment-location"
-              value={hospitalCity}
-              onChange={(event) => handleLocationChange(event.target.value)}
-              required
-              disabled={doctorsLoading || submitting}
-            >
-              <option value="">Select a city</option>
-              {availableCities.map((city) => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
+            <div className="booking-form-grid">
+              <div className="booking-field">
+                <label htmlFor="appointment-location">City for provider and hospital</label>
+                <select
+                  id="appointment-location"
+                  value={hospitalCity}
+                  onChange={(event) => handleLocationChange(event.target.value)}
+                  required
+                  disabled={doctorsLoading || submitting}
+                >
+                  <option value="">Select a city</option>
+                  {availableCities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+                <small>Used for both provider and hospital results.</small>
+              </div>
 
-            <label htmlFor="doctor-specialty">Specialty</label>
-            <select
-              id="doctor-specialty"
-              value={doctorSpecialty}
-              onChange={(event) => handleSpecialtyChange(event.target.value)}
-              disabled={doctorsLoading || submitting}
-            >
-              <option value="">All specialties</option>
-              {availableSpecialties.map((specialty) => (
-                <option key={specialty} value={specialty}>
-                  {specialty}
-                  {SPECIALTY_GUIDANCE[specialty]
-                    ? ` — ${SPECIALTY_GUIDANCE[specialty]}`
-                    : ''}
-                </option>
-              ))}
-            </select>
+              <div className="booking-field">
+                <label htmlFor="doctor-specialty">Specialty</label>
+                <select
+                  id="doctor-specialty"
+                  value={doctorSpecialty}
+                  onChange={(event) => handleSpecialtyChange(event.target.value)}
+                  disabled={doctorsLoading || submitting}
+                >
+                  <option value="">All specialties</option>
+                  {availableSpecialties.map((specialty) => (
+                    <option key={specialty} value={specialty}>
+                      {specialty}
+                      {SPECIALTY_GUIDANCE[specialty]
+                        ? ` — ${SPECIALTY_GUIDANCE[specialty]}`
+                        : ''}
+                    </option>
+                  ))}
+                </select>
+                <small>Optional filter for the demo provider directory.</small>
+              </div>
 
-            <label htmlFor="doctor">Select Doctor</label>
-            <select
-              id="doctor"
-              value={form.doctorId}
-              onChange={(event) => setForm({ ...form, doctorId: event.target.value })}
-              required
-              disabled={doctorsLoading || doctors.length === 0 || submitting}
-            >
-              <option value="">
-                {filteredDoctors.length ? 'Select a doctor' : 'No doctors match these filters'}
-              </option>
-              {filteredDoctors.map((doctor) => (
-                <option key={getDoctorId(doctor)} value={getDoctorId(doctor)}>
-                  {doctor.name} — {doctor.specialty}
-                  {doctor.location ? ` (${doctor.location})` : ''}
-                </option>
-              ))}
-            </select>
+              <div className="booking-field booking-field-wide">
+                <label htmlFor="doctor">Select doctor</label>
+                <select
+                  id="doctor"
+                  value={form.doctorId}
+                  onChange={(event) => setForm({ ...form, doctorId: event.target.value })}
+                  required
+                  disabled={doctorsLoading || doctors.length === 0 || submitting}
+                >
+                  <option value="">
+                    {filteredDoctors.length ? 'Select a doctor' : 'No doctors match these filters'}
+                  </option>
+                  {filteredDoctors.map((doctor) => (
+                    <option key={getDoctorId(doctor)} value={getDoctorId(doctor)}>
+                      {doctor.name} — {doctor.specialty}
+                      {doctor.location ? ` (${doctor.location})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <small>{filteredDoctors.length} matching provider{filteredDoctors.length === 1 ? '' : 's'} in the demo directory.</small>
+              </div>
 
-            <label htmlFor="date">Appointment Date</label>
-            <input
-              id="date"
-              type="date"
-              min={today}
-              value={form.date}
-              onChange={(event) => setForm({ ...form, date: event.target.value })}
-              required
-              disabled={submitting}
-            />
+              <div className="booking-field">
+                <label htmlFor="date">Appointment date</label>
+                <input
+                  id="date"
+                  type="date"
+                  min={today}
+                  value={form.date}
+                  onChange={(event) => setForm({ ...form, date: event.target.value })}
+                  required
+                  disabled={submitting}
+                />
+                <small>Choose today or a future date.</small>
+              </div>
 
-            <label htmlFor="time">Appointment Time</label>
-            <input
-              id="time"
-              type="time"
-              value={form.time}
-              onChange={(event) => setForm({ ...form, time: event.target.value })}
-              required
-              disabled={submitting}
-            />
+              <div className="booking-field">
+                <label htmlFor="time">Appointment time</label>
+                <input
+                  id="time"
+                  type="time"
+                  value={form.time}
+                  onChange={(event) => setForm({ ...form, time: event.target.value })}
+                  required
+                  disabled={submitting}
+                />
+                <small>Select your preferred time.</small>
+              </div>
+            </div>
 
             <section className="hospital-booking-section" aria-labelledby="hospital-booking-title">
               <div className="hospital-section-heading">
+                <span className="hospital-heading-icon"><HospitalIcon /></span>
                 <div>
                   <h3 id="hospital-booking-title">Hospital location</h3>
                   <p>Use the shared appointment city to search the live directory, then select a hospital.</p>
@@ -748,45 +788,57 @@ export default function Appointments() {
               </p>
             </section>
 
-            <label htmlFor="reason">Reason for visit (optional)</label>
-            <input
-              id="reason"
-              type="text"
-              maxLength={500}
-              value={form.reason}
-              onChange={(event) => setForm({ ...form, reason: event.target.value })}
-              placeholder="Brief reason for the appointment"
-              disabled={submitting}
-            />
+            <div className="booking-field booking-reason">
+              <label htmlFor="reason">Reason for visit <span>(optional)</span></label>
+              <input
+                id="reason"
+                type="text"
+                maxLength={500}
+                value={form.reason}
+                onChange={(event) => setForm({ ...form, reason: event.target.value })}
+                placeholder="Brief reason for the appointment"
+                disabled={submitting}
+              />
+              <small>Share only synthetic, non-clinical information for this demo.</small>
+            </div>
 
-            <button
-              type="submit"
-              className="book-appointment-btn"
-              disabled={submitting || doctorsLoading || doctors.length === 0}
-            >
-              {submitting ? 'Saving…' : 'Confirm Booking'}
-            </button>
+            <div className="booking-form-footer">
+              <p>Confirming saves the selected provider and hospital to your appointment.</p>
+              <button
+                type="submit"
+                className="book-appointment-btn"
+                disabled={submitting || doctorsLoading || doctors.length === 0}
+              >
+                {submitting ? 'Saving…' : 'Confirm booking'}
+              </button>
+            </div>
           </form>
         </section>
       )}
 
-      <div className="appointment-tabs" role="group" aria-label="Appointment filter">
-        <button
-          className={activeTab === 'Upcoming' ? 'active' : ''}
-          aria-pressed={activeTab === 'Upcoming'}
-          onClick={() => setActiveTab('Upcoming')}
-          type="button"
-        >
-          Upcoming
-        </button>
-        <button
-          className={activeTab === 'Past' ? 'active' : ''}
-          aria-pressed={activeTab === 'Past'}
-          onClick={() => setActiveTab('Past')}
-          type="button"
-        >
-          Past
-        </button>
+      <div className="appointment-list-heading">
+        <div>
+          <h2>Your appointments</h2>
+          <p>Review upcoming visits or look back at your history.</p>
+        </div>
+        <div className="appointment-tabs" role="group" aria-label="Appointment filter">
+          <button
+            className={activeTab === 'Upcoming' ? 'active' : ''}
+            aria-pressed={activeTab === 'Upcoming'}
+            onClick={() => setActiveTab('Upcoming')}
+            type="button"
+          >
+            Upcoming <span>{upcomingCount}</span>
+          </button>
+          <button
+            className={activeTab === 'Past' ? 'active' : ''}
+            aria-pressed={activeTab === 'Past'}
+            onClick={() => setActiveTab('Past')}
+            type="button"
+          >
+            Past <span>{pastCount}</span>
+          </button>
+        </div>
       </div>
 
       <section className="appointment-list" aria-live="polite" aria-busy={loading}>
@@ -812,8 +864,8 @@ export default function Appointments() {
             const mapUrl = hospitalMapUrl(hospital)
 
             return (
-              <article className="appointment-row" key={id || `${doctorName}-${appointment.date}-${appointment.time}`}>
-                <div className="doctor-avatar">{initials}</div>
+              <article className={`appointment-row ${status.toLowerCase()}`} key={id || `${doctorName}-${appointment.date}-${appointment.time}`}>
+                <div className="doctor-avatar" aria-hidden="true">{initials}</div>
                 <div className="doctor-details">
                   <h3>{doctorName}</h3>
                   <p>{appointment.specialty}</p>
@@ -824,7 +876,7 @@ export default function Appointments() {
                   </div>
                   {hospital?.name && (
                     <div className="appointment-hospital">
-                      <p className="appointment-hospital-name">🏥 {hospital.name}</p>
+                      <p className="appointment-hospital-name"><HospitalIcon /> {hospital.name}</p>
                       <p>{hospital.address || 'Address not available in map data'}</p>
                       {(hospital.city || hospital.state) && (
                         <p>{[hospital.city, hospital.state].filter(Boolean).join(', ')}</p>
@@ -863,6 +915,7 @@ export default function Appointments() {
           })
         ) : (
           <div className="appointments-empty">
+            <CalendarIcon />
             <h3>No {activeTab.toLowerCase()} appointments</h3>
             <p>
               {activeTab === 'Upcoming'

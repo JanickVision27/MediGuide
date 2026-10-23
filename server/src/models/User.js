@@ -29,12 +29,18 @@ const userSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiresAt: { type: Date, default: null, select: false },
     role: {
       type: String,
       // Accept the initial demo release's value so existing accounts remain editable.
       enum: ["patient", "Patient"],
       default: "patient",
       immutable: true,
+    },
+    profilePhotoUpdatedAt: {
+      type: Date,
+      default: null,
     },
     dob: optionalText(10),
     phone: optionalText(20),

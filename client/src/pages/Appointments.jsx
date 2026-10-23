@@ -62,6 +62,22 @@ function safeHospitalSourceUrl(value) {
 }
 
 function hospitalMapUrl(hospital) {
+  // Google Places supplies a direct link to the exact listing. Prefer it over
+  // coordinates so selecting a hospital opens that place, not just a map pin.
+  const sourceUrl = safeHospitalSourceUrl(hospital?.sourceUrl)
+  if (sourceUrl) {
+    const hostname = new URL(sourceUrl).hostname.toLocaleLowerCase()
+    if (
+      hostname === 'google.com' ||
+      hostname.endsWith('.google.com') ||
+      hostname === 'maps.app.goo.gl'
+    ) {
+      return sourceUrl
+    }
+  }
+
+  // OpenStreetMap fallback results still open in Google Maps for a consistent
+  // navigation experience; their original data-source attribution is retained.
   const coordinates = hospital?.location?.coordinates
   if (!Array.isArray(coordinates) || coordinates.length !== 2) return ''
   const longitude = Number(coordinates[0])
@@ -74,7 +90,22 @@ function hospitalMapUrl(hospital) {
   ) {
     return ''
   }
-  return `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+}
+
+const SPECIALTY_GUIDANCE = {
+  Cardiologist: 'heart and circulation',
+  Dermatologist: 'skin, hair and nails',
+  Endocrinologist: 'diabetes, thyroid and hormones',
+  'ENT Specialist': 'ear, nose and throat',
+  Gastroenterologist: 'digestion, stomach and liver',
+  'General Physician': 'fever, infections and general health',
+  Gynecologist: "women's health and pregnancy",
+  Neurologist: 'brain, nerves and headaches',
+  Ophthalmologist: 'eyes and vision',
+  'Orthopedic Surgeon': 'bones, joints and muscles',
+  Pediatrician: 'child health and development',
+  Psychiatrist: 'mental health and wellbeing',
 }
 
 // Keep only the location snapshot needed by an appointment. This also prevents
@@ -132,6 +163,7 @@ export default function Appointments() {
   const [doctorsLoading, setDoctorsLoading] = useState(true)
   const [doctorError, setDoctorError] = useState('')
   const [doctorSearch, setDoctorSearch] = useState('')
+  const [doctorSpecialty, setDoctorSpecialty] = useState('')
   const [activeTab, setActiveTab] = useState('Upcoming')
   const [showForm, setShowForm] = useState(false)
   const [message, setMessage] = useState('')
@@ -229,6 +261,23 @@ export default function Appointments() {
     [appointments, activeTab, today],
   )
 
+  const availableCities = useMemo(
+    () => [...new Set(doctors.map((doctor) => doctor.location?.trim()).filter(Boolean))]
+      .sort((first, second) => first.localeCompare(second, 'en-IN')),
+    [doctors],
+  )
+
+  const availableSpecialties = useMemo(() => {
+    const cityQuery = hospitalCity.trim().toLocaleLowerCase()
+    const cityDoctors = cityQuery
+      ? doctors.filter(
+          (doctor) => (doctor.location || '').trim().toLocaleLowerCase() === cityQuery,
+        )
+      : doctors
+    return [...new Set(cityDoctors.map((doctor) => doctor.specialty).filter(Boolean))]
+      .sort((first, second) => first.localeCompare(second, 'en-IN'))
+  }, [doctors, hospitalCity])
+
   const filteredDoctors = useMemo(() => {
     const query = doctorSearch.trim().toLocaleLowerCase()
     const cityQuery = hospitalCity.trim().toLocaleLowerCase()
@@ -236,15 +285,17 @@ export default function Appointments() {
       const matchesProvider = !query ||
         `${doctor.name} ${doctor.specialty}`.toLocaleLowerCase().includes(query)
       const matchesCity = !cityQuery ||
-        (doctor.location || '').toLocaleLowerCase().includes(cityQuery)
-      return matchesProvider && matchesCity
+        (doctor.location || '').trim().toLocaleLowerCase() === cityQuery
+      const matchesSpecialty = !doctorSpecialty || doctor.specialty === doctorSpecialty
+      return matchesProvider && matchesCity && matchesSpecialty
     })
-  }, [doctors, doctorSearch, hospitalCity])
+  }, [doctors, doctorSearch, doctorSpecialty, hospitalCity])
 
   function resetBookingForm() {
     hospitalRequest.current += 1
     setForm({ doctorId: '', date: '', time: '', reason: '' })
     setDoctorSearch('')
+    setDoctorSpecialty('')
     setHospitalCity('')
     setHospitalName('')
     setHospitalResults([])
@@ -266,8 +317,8 @@ export default function Appointments() {
   }
 
   function updateHospitalCriteria(field, value) {
-    // Results for previous criteria must never remain selectable under a newly
-    // typed city/name, including while an older request is still resolving.
+    // Results for previous criteria must never remain selectable under a new
+    // city/name, including while an older request is still resolving.
     hospitalRequest.current += 1
     if (field === 'city') setHospitalCity(value)
     else setHospitalName(value)
@@ -285,14 +336,37 @@ export default function Appointments() {
   function handleLocationChange(value) {
     updateHospitalCriteria('city', value)
     const cityQuery = value.trim().toLocaleLowerCase()
+    const specialtyAvailable = !doctorSpecialty || !cityQuery || doctors.some(
+      (doctor) =>
+        (doctor.location || '').trim().toLocaleLowerCase() === cityQuery &&
+        doctor.specialty === doctorSpecialty,
+    )
+
+    if (!specialtyAvailable) setDoctorSpecialty('')
+
     setForm((current) => {
-      if (!current.doctorId || !cityQuery) return current
+      if (!current.doctorId) return current
       const selectedDoctor = doctors.find(
         (doctor) => getDoctorId(doctor) === current.doctorId,
       )
-      const matchesCity = selectedDoctor &&
-        (selectedDoctor.location || '').toLocaleLowerCase().includes(cityQuery)
-      return matchesCity ? current : { ...current, doctorId: '' }
+      const matchesCity = selectedDoctor && (!cityQuery ||
+        (selectedDoctor.location || '').trim().toLocaleLowerCase() === cityQuery)
+      const matchesSpecialty = !doctorSpecialty || !specialtyAvailable ||
+        selectedDoctor?.specialty === doctorSpecialty
+      return matchesCity && matchesSpecialty ? current : { ...current, doctorId: '' }
+    })
+  }
+
+  function handleSpecialtyChange(value) {
+    setDoctorSpecialty(value)
+    setForm((current) => {
+      if (!current.doctorId) return current
+      const selectedDoctor = doctors.find(
+        (doctor) => getDoctorId(doctor) === current.doctorId,
+      )
+      const matchesSpecialty = selectedDoctor &&
+        (!value || selectedDoctor.specialty === value)
+      return matchesSpecialty ? current : { ...current, doctorId: '' }
     })
   }
 
@@ -300,7 +374,7 @@ export default function Appointments() {
     const cityValue = hospitalCity.trim()
     const nameValue = hospitalName.trim()
     if (!cityValue) {
-      setHospitalError('Enter the shared provider and hospital city above first.')
+      setHospitalError('Choose the shared provider and hospital city above first.')
       return
     }
 
@@ -471,16 +545,36 @@ export default function Appointments() {
           <h2>Book New Appointment</h2>
           <form onSubmit={handleBook}>
             <label htmlFor="appointment-location">City for provider and hospital</label>
-            <input
+            <select
               id="appointment-location"
-              type="text"
               value={hospitalCity}
               onChange={(event) => handleLocationChange(event.target.value)}
-              placeholder="e.g. Hyderabad or Pune"
-              maxLength={100}
               required
-              disabled={submitting}
-            />
+              disabled={doctorsLoading || submitting}
+            >
+              <option value="">Select a city</option>
+              {availableCities.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+
+            <label htmlFor="doctor-specialty">Specialty (optional)</label>
+            <select
+              id="doctor-specialty"
+              value={doctorSpecialty}
+              onChange={(event) => handleSpecialtyChange(event.target.value)}
+              disabled={doctorsLoading || submitting}
+            >
+              <option value="">All specialties</option>
+              {availableSpecialties.map((specialty) => (
+                <option key={specialty} value={specialty}>
+                  {specialty}
+                  {SPECIALTY_GUIDANCE[specialty]
+                    ? ` — ${SPECIALTY_GUIDANCE[specialty]}`
+                    : ''}
+                </option>
+              ))}
+            </select>
 
             <label htmlFor="doctor-search">Search providers by name or specialty</label>
             <input
@@ -504,7 +598,7 @@ export default function Appointments() {
               disabled={doctorsLoading || doctors.length === 0 || submitting}
             >
               <option value="">
-                {filteredDoctors.length ? 'Select a demo provider' : 'No matching providers'}
+                {filteredDoctors.length ? 'Select a doctor' : 'No doctors match these filters'}
               </option>
               {filteredDoctors.map((doctor) => (
                 <option key={getDoctorId(doctor)} value={getDoctorId(doctor)}>
@@ -547,7 +641,7 @@ export default function Appointments() {
               <p className="hospital-shared-location">
                 {hospitalCity.trim()
                   ? <>Provider and hospital city: <strong>{hospitalCity.trim()}</strong>. Edit the shared city above to change both.</>
-                  : 'Enter the shared city above to filter providers and search hospitals.'}
+                  : 'Choose the shared city above to filter providers and search hospitals.'}
               </p>
 
               <div className="hospital-search-controls">
@@ -601,7 +695,7 @@ export default function Appointments() {
                   </div>
                   <div className="selected-hospital-actions">
                     <a href={hospitalMapUrl(selectedHospital)} target="_blank" rel="noreferrer">
-                      View location ↗
+                      View on Google Maps ↗
                     </a>
                     {hospitalResults.length > 1 && !hospitalResultsVisible && (
                       <button type="button" onClick={() => setHospitalResultsVisible(true)}>
@@ -635,9 +729,9 @@ export default function Appointments() {
                               href={hospitalMapUrl(hospital)}
                               target="_blank"
                               rel="noreferrer"
-                              aria-label={`View ${hospital.name} on a map`}
+                              aria-label={`View ${hospital.name} on Google Maps`}
                             >
-                              View map ↗
+                              Google Maps ↗
                             </a>
                             <button
                               type="button"
@@ -755,7 +849,7 @@ export default function Appointments() {
                       )}
                       {mapUrl && (
                         <a href={mapUrl} target="_blank" rel="noreferrer">
-                          View hospital location ↗
+                          View hospital on Google Maps ↗
                         </a>
                       )}
                       <small>Hospital data: {hospital.source}</small>

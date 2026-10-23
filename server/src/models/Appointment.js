@@ -1,5 +1,67 @@
 import mongoose from "mongoose";
 
+const hospitalLocationSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Point"],
+      required: true,
+    },
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: {
+        validator(value) {
+          return (
+            Array.isArray(value) &&
+            value.length === 2 &&
+            Number.isFinite(value[0]) &&
+            Number.isFinite(value[1]) &&
+            Math.abs(value[0]) <= 180 &&
+            Math.abs(value[1]) <= 90
+          );
+        },
+        message: "Hospital coordinates must contain valid longitude and latitude",
+      },
+    },
+  },
+  { _id: false }
+);
+
+const hospitalSnapshotSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, trim: true, maxlength: 200 },
+    name: { type: String, required: true, trim: true, maxlength: 200 },
+    address: { type: String, default: "", trim: true, maxlength: 1000 },
+    city: { type: String, default: "", trim: true, maxlength: 120 },
+    state: { type: String, default: "", trim: true, maxlength: 120 },
+    source: {
+      type: String,
+      enum: ["OpenStreetMap", "Google Places"],
+      required: true,
+    },
+    sourceUrl: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 2048,
+      validate: {
+        validator(value) {
+          try {
+            const url = new URL(value);
+            return url.protocol === "https:" || url.protocol === "http:";
+          } catch {
+            return false;
+          }
+        },
+        message: "Hospital source URL must use HTTP or HTTPS",
+      },
+    },
+    location: { type: hospitalLocationSchema, required: true },
+  },
+  { _id: false }
+);
+
 const appointmentSchema = new mongoose.Schema(
   {
     userId: {
@@ -33,6 +95,9 @@ const appointmentSchema = new mongoose.Schema(
       trim: true,
       maxlength: 120,
     },
+    // Optional at the database level so appointments created before hospital
+    // selection was introduced remain valid. New requests require it in Zod.
+    hospital: { type: hospitalSnapshotSchema, required: false },
     date: {
       type: String,
       required: [true, "Appointment date is required"],

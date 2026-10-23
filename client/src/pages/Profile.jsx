@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
 
 import UserAvatar from '../components/UserAvatar.jsx'
 import { PillIcon, ShieldCheckIcon, UserIcon } from '../components/icons.jsx'
@@ -44,7 +43,6 @@ function formatDate(value) {
 }
 
 export default function Profile() {
-  const location = useLocation()
   const {
     user,
     saveProfile,
@@ -57,7 +55,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [photoError, setPhotoError] = useState(location.state?.profilePhotoWarning || '')
+  const [photoError, setPhotoError] = useState('')
   const [photoMessage, setPhotoMessage] = useState('')
   const [photoSaving, setPhotoSaving] = useState(false)
   const photoInput = useRef(null)
@@ -363,10 +361,6 @@ export default function Profile() {
               {renderListField('Allergies', 'allergies', patient.allergies, 'e.g. Penicillin')}
               {renderListField('Current Medications', 'medications', patient.medications, 'e.g. Vitamin D')}
             </div>
-            <p className="medical-note">
-              <ShieldCheckIcon />
-              <span>Educational demo only. Do not enter real medical information; this is not medical advice.</span>
-            </p>
           </section>
         </div>
 

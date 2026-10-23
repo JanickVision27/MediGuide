@@ -13,7 +13,7 @@ import { formatMedicineName } from '../utils/formatName.js'
  * cards. The transcript is React state only and is cleared when the panel
  * closes.
  */
-export default function FallbackMedicineCard({ name }) {
+export default function FallbackMedicineCard({ name, onAiLookup, aiLookupLoading = false }) {
   const [chatOpen, setChatOpen] = useState(false)
 
   return (
@@ -37,16 +37,27 @@ export default function FallbackMedicineCard({ name }) {
           </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-2 sm:flex-row">
-          <a
-            href={oneMgSearchUrl(name)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary flex-1 border-amber-300 bg-white hover:bg-amber-100"
-          >
-            Search on 1mg
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>
+        <div className={`mt-auto flex flex-col gap-2 ${onAiLookup ? '' : 'sm:flex-row'}`}>
+          {onAiLookup ? (
+            <button
+              type="button"
+              onClick={onAiLookup}
+              disabled={aiLookupLoading}
+              className="btn-secondary flex-1 border-amber-300 bg-white hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {aiLookupLoading ? 'Looking up with Groq…' : 'Get AI medicine info'}
+            </button>
+          ) : (
+            <a
+              href={oneMgSearchUrl(name)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary flex-1 border-amber-300 bg-white hover:bg-amber-100"
+            >
+              Search on 1mg
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          )}
           <button
             type="button"
             onClick={() => setChatOpen(true)}

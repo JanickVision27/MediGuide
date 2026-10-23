@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import MedicineIcon from './MedicineIcon.jsx'
+import MedicineImage from './MedicineImage.jsx'
 import MedicineChat from './MedicineChat.jsx'
 import { ChatIcon } from './icons.jsx'
 import { formatMedicineName, formatClassName } from '../utils/formatName.js'
@@ -15,7 +15,7 @@ export default function MedicineCard({ medicine, onViewDetails }) {
     <>
       <article className="card flex h-full flex-col gap-4 p-5 transition-shadow duration-150 hover:shadow-md">
         <div className="flex items-start gap-4">
-          <MedicineIcon className="h-12 w-12 shrink-0" />
+          <MedicineImage medicine={medicine} className="h-14 w-14" />
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-bold text-slate-900" title={formatMedicineName(medicine.name)}>
               {formatMedicineName(medicine.name)}

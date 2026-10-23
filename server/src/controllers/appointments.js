@@ -3,13 +3,7 @@ import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import Doctor from "../models/Doctor.js";
 import { sendAppointmentConfirmation } from "../services/emailService.js";
-
-function localDateString(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { appointmentDateTimeToUtc, buildReminderSchedule, DEFAULT_REMINDER_OFFSETS } from "../services/appointmentReminders.js";
 
 export async function getAppointments(req, res, next) {
   try {
@@ -24,7 +18,7 @@ export async function getAppointments(req, res, next) {
 
 export async function createAppointment(req, res, next) {
   try {
-    const { doctor, specialty, hospital, date, time, reason = "" } = req.body;
+    const { doctor, specialty, hospital, date, time, timeZone, reason = "" } = req.body;
 
     if (!hospital) {
       return res.status(400).json({
@@ -32,9 +26,15 @@ export async function createAppointment(req, res, next) {
       });
     }
 
-    if (date < localDateString()) {
+    let appointmentAt;
+    try {
+      appointmentAt = appointmentDateTimeToUtc(date, time, timeZone);
+    } catch {
+      return res.status(400).json({ message: "Select a valid appointment time and timezone." });
+    }
+    if (appointmentAt <= new Date()) {
       return res.status(400).json({
-        message: "Appointment date cannot be in the past.",
+        message: "Appointment time must be in the future.",
       });
     }
 
@@ -75,6 +75,11 @@ export async function createAppointment(req, res, next) {
       hospital,
       date,
       time,
+      timeZone,
+      reminderPreferences: { enabled: true, offsetsMinutes: [...DEFAULT_REMINDER_OFFSETS] },
+      reminders: buildReminderSchedule({ date, time, timeZone }),
+      remindersInitialized: true,
+      readinessChecklist: {},
       reason,
       status: "Upcoming",
     });
@@ -91,7 +96,7 @@ export async function createAppointment(req, res, next) {
       time: appointment.time,
       reason: appointment.reason,
     }).catch((error) => {
-      console.error("Appointment confirmation email failed:", error.message);
+      console.error("Appointment confirmation email delivery failed.");
     });
 
     return res.status(201).json({
@@ -115,8 +120,20 @@ export async function cancelAppointment(req, res, next) {
         userId: req.userId,
         status: "Upcoming",
       },
-      { status: "Cancelled" },
-      { new: true, runValidators: true }
+      { $set: {
+        status: "Cancelled",
+        "reminders.$[reminder].status": "cancelled",
+        "reminders.$[reminder].inAppStatus": "cancelled",
+        "reminders.$[reminder].emailStatus": "cancelled",
+      } },
+      {
+        new: true,
+        runValidators: true,
+        arrayFilters: [{
+          "reminder.status": { $in: ["scheduled", "processing"] },
+          "reminder.emailStatus": "pending",
+        }],
+      }
     );
 
     if (!appointment) {

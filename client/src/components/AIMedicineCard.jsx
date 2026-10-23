@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import MedicineIcon from './MedicineIcon.jsx'
+import MedicineImage from './MedicineImage.jsx'
 import MedicineChat from './MedicineChat.jsx'
 import {
   AlertOctagonIcon,
@@ -100,7 +100,7 @@ export default function AIMedicineCard({ data, medicineName }) {
     <>
       <article className="flex flex-col gap-5 rounded-2xl border-2 border-indigo-300 bg-indigo-50/60 p-6 shadow-sm">
         <header className="flex items-start gap-4">
-          <MedicineIcon className="h-14 w-14 shrink-0" />
+          <MedicineImage medicine={{ name }} className="h-16 w-16" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="break-words text-xl font-extrabold tracking-tight text-slate-900">{displayName}</h3>

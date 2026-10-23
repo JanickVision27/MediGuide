@@ -203,9 +203,23 @@
   font-weight: 700;
 }
 
+.hospital-shared-location {
+  margin: 0 0 13px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  background: #eaf2ff;
+  color: #4b5f7a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hospital-shared-location strong {
+  color: #174ea6;
+}
+
 .hospital-search-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: end;
 }

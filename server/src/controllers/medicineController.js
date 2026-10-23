@@ -19,6 +19,18 @@ const MAX_PDF_TEXT_LENGTH = 20000;
 const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
 const PDF_MIME_TYPE = "application/pdf";
 
+// Whitelisted, static patterns keep category queries safe while matching the
+// existing `uses` and class fields in the seeded medicine collection.
+const MEDICINE_CATEGORY_PATTERNS = Object.freeze({
+  fever: "^(?:treatment of )?fever$|^common cold symptoms with fever$",
+  pain: "pain|analgesic",
+  headache: "headache|migraine",
+  cold_cough: "common cold|cough",
+  allergy: "allerg|hay fever",
+  respiratory: "respiratory|asthma|copd|pulmonary",
+  vitamins: "vitamin|mineral|nutrient|appetite stimulant|immunity booster",
+});
+
 const DB_UNAVAILABLE_MESSAGE =
   "Medicine database is currently unavailable. Please try again later.";
 
@@ -158,7 +170,7 @@ export function splitMedicines(names, docs) {
 
 // ---------- routes ----------------------------------------------------------
 
-/** GET /api/medicines?search=query */
+/** GET /api/medicines?search=query&letter=A&category=fever */
 export async function searchMedicines(req, res) {
   if (!dbReady()) {
     return res.status(503).json({ error: DB_UNAVAILABLE_MESSAGE });
@@ -167,15 +179,45 @@ export async function searchMedicines(req, res) {
   try {
     const raw = typeof req.query.search === "string" ? req.query.search : "";
     const term = raw.trim().slice(0, MAX_SEARCH_LENGTH);
+    const rawLetter = typeof req.query.letter === "string" ? req.query.letter.trim() : "";
+    const letter = rawLetter.toUpperCase();
+    const category = typeof req.query.category === "string"
+      ? req.query.category.trim().toLowerCase()
+      : "";
 
-    const filter = term
-      ? {
-          $or: [
-            { name: new RegExp(escapeRegex(term), "i") },
-            { composition1: new RegExp(escapeRegex(term), "i") },
-          ],
-        }
-      : {};
+    if (letter && !/^[A-Z]$/.test(letter)) {
+      return res.status(400).json({ error: "Letter filter must be one character from A to Z." });
+    }
+    if (category && !Object.hasOwn(MEDICINE_CATEGORY_PATTERNS, category)) {
+      return res.status(400).json({ error: "Unknown medicine use/category filter." });
+    }
+
+    const clauses = [];
+    if (term) {
+      const searchPattern = new RegExp(escapeRegex(term), "i");
+      clauses.push({
+        $or: [{ name: searchPattern }, { composition1: searchPattern }],
+      });
+    }
+    if (letter) {
+      clauses.push({ name: new RegExp(`^${letter}`, "i") });
+    }
+    if (category) {
+      const categoryPattern = new RegExp(MEDICINE_CATEGORY_PATTERNS[category], "i");
+      clauses.push({
+        $or: [
+          { uses: categoryPattern },
+          { therapeuticClass: categoryPattern },
+          { actionClass: categoryPattern },
+        ],
+      });
+    }
+
+    const filter = clauses.length === 0
+      ? {}
+      : clauses.length === 1
+      ? clauses[0]
+      : { $and: clauses };
 
     const docs = await Medicine.find(filter)
       .sort({ name: 1 })

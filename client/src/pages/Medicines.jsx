@@ -7,9 +7,20 @@ import AIMedicineCard from '../components/AIMedicineCard.jsx'
 import { API_BASE } from '../utils/medicine.js'
 
 const MODES = {
-  search: 'Search Medicines',
+  search: 'Browse Medicines',
   prescription: 'Paste Prescription',
 }
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+const MEDICINE_CATEGORIES = [
+  { value: 'fever', label: 'Fever' },
+  { value: 'pain', label: 'Pain relief' },
+  { value: 'headache', label: 'Headache & migraine' },
+  { value: 'cold_cough', label: 'Cold & cough' },
+  { value: 'allergy', label: 'Allergy' },
+  { value: 'respiratory', label: 'Respiratory' },
+  { value: 'vitamins', label: 'Vitamins & nutrition' },
+]
 
 const SEARCH_DEBOUNCE_MS = 300
 // AI lookup is only sent on explicit submit; repeated submits within this window collapse into one.
@@ -104,9 +115,11 @@ export default function Medicines() {
 
   // Search state
   const [query, setQuery] = useState('')
+  const [selectedLetter, setSelectedLetter] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('')
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS)
   const [results, setResults] = useState([])
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(true)
   const [searchError, setSearchError] = useState('')
 
   // Prescription state - shared across paste + upload paths
@@ -148,6 +161,8 @@ export default function Medicines() {
       try {
         const params = new URLSearchParams()
         if (debouncedQuery) params.set('search', debouncedQuery)
+        if (selectedLetter) params.set('letter', selectedLetter)
+        if (selectedCategory) params.set('category', selectedCategory)
         const res = await fetch(`${API_BASE}/medicines?${params.toString()}`, {
           credentials: 'include',
           signal: controller.signal,
@@ -155,7 +170,8 @@ export default function Medicines() {
         if (!res.ok) {
           throw new Error(await readError(res, 'Could not load medicines.'))
         }
-        setResults(await res.json())
+        const data = await res.json()
+        setResults(Array.isArray(data) ? data : [])
       } catch (err) {
         if (err.name === 'AbortError') return
         setResults([])
@@ -167,14 +183,14 @@ export default function Medicines() {
     run()
 
     return () => controller.abort()
-  }, [debouncedQuery, mode])
+  }, [debouncedQuery, selectedLetter, selectedCategory, mode])
 
-  // Any change to the query invalidates a pending or shown AI result.
+  // Any change to the query/filters invalidates a pending or shown AI result.
   useEffect(() => {
     clearTimeout(aiTimerRef.current)
     aiAbortRef.current?.abort()
     setAiState(AI_IDLE)
-  }, [query])
+  }, [query, selectedLetter, selectedCategory])
 
   // Revoke the object URL when the image changes/unmounts to free memory.
   useEffect(() => {
@@ -450,13 +466,30 @@ export default function Medicines() {
   }
 
   const trimmedQuery = query.trim()
+  const hasActiveFilters = Boolean(trimmedQuery || selectedLetter || selectedCategory)
+  const selectedCategoryLabel = MEDICINE_CATEGORIES.find(
+    (category) => category.value === selectedCategory,
+  )?.label
+  const resultContext = [
+    debouncedQuery ? `matching "${debouncedQuery}"` : '',
+    selectedLetter ? `starting with ${selectedLetter}` : '',
+    selectedCategoryLabel ? `in ${selectedCategoryLabel}` : '',
+  ].filter(Boolean).join(' · ')
   const showAiPrompt =
     mode === 'search' &&
     trimmedQuery !== '' &&
+    !selectedLetter &&
+    !selectedCategory &&
     debouncedQuery === trimmedQuery &&
     !searchLoading &&
     !searchError &&
     results.length === 0
+
+  const clearMedicineFilters = () => {
+    setQuery('')
+    setSelectedLetter('')
+    setSelectedCategory('')
+  }
 
   const canSubmitText = !!prescription.trim() && !extractLoading && ocrStatus !== 'loading'
   const canSubmitPdf = !!pdfFile && !extractLoading && !pdfUploading
@@ -464,25 +497,119 @@ export default function Medicines() {
 
   const renderSearch = () => (
     <form onSubmit={handleSearchSubmit} aria-label="Medicine search" className="space-y-6">
-      <div>
-        <label htmlFor="medicine-search" className="mb-2 block text-sm font-semibold text-slate-700">
-          Search by name or composition
-        </label>
-        <div className="relative">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" focusable="false">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="M20 20l-4.2-4.2" />
-          </svg>
-          <input
-            id="medicine-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. Dolo 650, paracetamol, pantoprazole"
-            autoComplete="off"
-            className="w-full rounded-xl border border-slate-300 bg-white py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
-          />
+      <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div>
+          <label htmlFor="medicine-search" className="mb-2 block text-sm font-semibold text-slate-700">
+            Search by medicine name or composition
+          </label>
+          <div className="relative">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" focusable="false">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="M20 20l-4.2-4.2" />
+            </svg>
+            <input
+              id="medicine-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g. Dolo 650, paracetamol, pantoprazole"
+              autoComplete="off"
+              className="w-full rounded-xl border border-slate-300 bg-white py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            />
+          </div>
         </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Filter by listed use or class
+            </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearMedicineFilters}
+                className="text-xs font-semibold text-brand-700 hover:underline"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+          <div role="group" aria-label="Medicine use or class" className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={!selectedCategory}
+              onClick={() => setSelectedCategory('')}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                !selectedCategory
+                  ? 'border-brand-600 bg-brand-600 text-white'
+                  : 'border-slate-300 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50'
+              }`}
+            >
+              All uses
+            </button>
+            {MEDICINE_CATEGORIES.map((category) => {
+              const active = selectedCategory === category.value
+              return (
+                <button
+                  key={category.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setSelectedCategory(category.value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    active
+                      ? 'border-brand-600 bg-brand-600 text-white'
+                      : 'border-slate-300 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50'
+                  }`}
+                >
+                  {category.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <fieldset className="min-w-0">
+          <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+            Browse by first letter
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              aria-pressed={!selectedLetter}
+              onClick={() => setSelectedLetter('')}
+              className={`h-8 rounded-lg border px-3 text-xs font-bold transition-colors ${
+                !selectedLetter
+                  ? 'border-brand-600 bg-brand-600 text-white'
+                  : 'border-slate-300 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50'
+              }`}
+            >
+              All
+            </button>
+            {ALPHABET.map((letter) => {
+              const active = selectedLetter === letter
+              return (
+                <button
+                  key={letter}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`Show medicines starting with ${letter}`}
+                  onClick={() => setSelectedLetter(letter)}
+                  className={`h-8 w-8 rounded-lg border text-xs font-bold transition-colors ${
+                    active
+                      ? 'border-brand-600 bg-brand-600 text-white'
+                      : 'border-slate-300 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50'
+                  }`}
+                >
+                  {letter}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+
+        <p className="text-xs leading-5 text-slate-500">
+          Filters match the uses/classes recorded in our sample data; they are not treatment recommendations.
+        </p>
       </div>
 
       {searchError && <StatusNotice tone="error">{searchError}</StatusNotice>}
@@ -492,13 +619,24 @@ export default function Medicines() {
           {searchLoading
             ? 'Searching…'
             : `${results.length} ${results.length === 1 ? 'medicine' : 'medicines'}${
-                debouncedQuery ? ` matching "${debouncedQuery}"` : ' (showing the first 50 alphabetically)'
-              }`}
+                resultContext ? ` ${resultContext}` : ' across all medicines'
+              }${results.length === 50 ? ' · first 50 matches' : ''}`}
         </p>
       )}
 
-      {!searchLoading && !searchError && results.length === 0 && !trimmedQuery && (
-        <StatusNotice>No medicines matched. Try a shorter name, or use Paste Prescription for a full list.</StatusNotice>
+      {!searchLoading && !searchError && results.length === 0 && !showAiPrompt && (
+        <div className="space-y-3">
+          <StatusNotice>
+            {hasActiveFilters
+              ? 'No medicines match these filters. Try another letter/category or a shorter search.'
+              : 'No medicines are currently available in the sample database.'}
+          </StatusNotice>
+          {hasActiveFilters && (
+            <button type="button" onClick={clearMedicineFilters} className="btn-secondary">
+              Clear filters
+            </button>
+          )}
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -801,9 +939,9 @@ export default function Medicines() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Smart Medicine Lookup</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Medicine &amp; Prescription</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Search our sample medicine database, or upload/paste a prescription and let MediGuide find the medicines in it.
+          Browse the sample database by name, first letter, or listed use—or upload/paste a prescription to find its medicines.
         </p>
       </header>
 

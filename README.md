@@ -26,7 +26,8 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Synthetic doctor directory with specialty/location filtering
 - Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
   and optional Google Places listings/photos
-- Existing medicine search, prescription extraction, and AI chat features
+- Medicine browsing by name/composition, A–Z letter, and listed use/category
+- Existing prescription image/PDF/text extraction and medicine AI features
 
 ## Getting started
 
@@ -140,6 +141,7 @@ npm run preview
 | `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
 | `GET /api/doctors` | List/filter active synthetic doctors |
+| `GET /api/medicines` | Search/filter medicines by `search`, `letter`, and `category` |
 
 ## Project structure
 

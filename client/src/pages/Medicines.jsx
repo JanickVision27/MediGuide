@@ -609,6 +609,7 @@ export default function Medicines() {
 
         <p className="text-xs leading-5 text-slate-500">
           Filters match the uses/classes recorded in our sample data; they are not treatment recommendations.
+          Images are generic illustrations unless a matching named image is available.
         </p>
       </div>
 

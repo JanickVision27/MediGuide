@@ -27,6 +27,7 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
   and optional Google Places listings/photos
 - Medicine browsing by name/composition, A–Z letter, and listed use/category
+- Name-matched local medicine images with a generic default illustration
 - Existing prescription image/PDF/text extraction and medicine AI features
 
 ## Getting started

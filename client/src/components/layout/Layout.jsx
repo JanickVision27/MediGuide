@@ -44,13 +44,13 @@ export default function Layout() {
           id="main-content"
           className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8"
         >
-          <div className="mx-auto w-full max-w-6xl">
+          <div className={`mx-auto w-full ${pathname === '/appointments' ? 'max-w-[100rem]' : 'max-w-6xl'}`}>
             <Outlet />
           </div>
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-4 py-4 sm:px-6 lg:px-10">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`mx-auto flex w-full flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between ${pathname === '/appointments' ? 'max-w-[100rem]' : 'max-w-6xl'}`}>
             <p>
               &copy; {new Date().getFullYear()} MediGuide &mdash; educational demo project.
             </p>

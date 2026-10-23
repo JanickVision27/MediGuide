@@ -5,14 +5,22 @@ import {
   loginUser as apiLogin,
   logoutUser as apiLogout,
   registerUser as apiRegister,
+  deleteProfilePhoto as apiDeleteProfilePhoto,
+  uploadProfilePhoto as apiUploadProfilePhoto,
   updateUserProfile,
 } from '../api.js'
+import {
+  clearProfilePhotoCache,
+  getProfilePhotoKey,
+  primeProfilePhotoCache,
+} from '../utils/profilePhotoCache.js'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [profilePhotoVersion, setProfilePhotoVersion] = useState(0)
 
   const refreshUser = useCallback(async () => {
     try {
@@ -20,6 +28,7 @@ export function AuthProvider({ children }) {
       setUser(result.user)
       return result.user
     } catch {
+      clearProfilePhotoCache()
       setUser(null)
       return null
     } finally {
@@ -33,12 +42,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const result = await apiLogin(credentials)
+    clearProfilePhotoCache()
     setUser(result.user)
     return result.user
   }, [])
 
   const register = useCallback(async (details) => {
     const result = await apiRegister(details)
+    clearProfilePhotoCache()
     setUser(result.user)
     return result.user
   }, [])
@@ -47,6 +58,7 @@ export function AuthProvider({ children }) {
     try {
       await apiLogout()
     } finally {
+      clearProfilePhotoCache()
       setUser(null)
     }
   }, [])
@@ -57,9 +69,38 @@ export function AuthProvider({ children }) {
     return result.user
   }, [])
 
+  const saveProfilePhoto = useCallback(async (file) => {
+    const result = await apiUploadProfilePhoto(file)
+    // The uploaded file is already available locally, so show it immediately
+    // instead of downloading the same image again after saving.
+    primeProfilePhotoCache(getProfilePhotoKey(result.user), file)
+    setUser(result.user)
+    setProfilePhotoVersion((version) => version + 1)
+    return result.user
+  }, [])
+
+  const removeProfilePhoto = useCallback(async () => {
+    const result = await apiDeleteProfilePhoto()
+    clearProfilePhotoCache()
+    setUser(result.user)
+    setProfilePhotoVersion((version) => version + 1)
+    return result.user
+  }, [])
+
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, refreshUser, saveProfile }),
-    [user, loading, login, register, logout, refreshUser, saveProfile],
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      refreshUser,
+      saveProfile,
+      saveProfilePhoto,
+      removeProfilePhoto,
+      profilePhotoVersion,
+    }),
+    [user, loading, login, register, logout, refreshUser, saveProfile, saveProfilePhoto, removeProfilePhoto, profilePhotoVersion],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

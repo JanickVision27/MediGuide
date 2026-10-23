@@ -62,6 +62,48 @@ const hospitalSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const reminderSchema = new mongoose.Schema({
+  offsetMinutes: { type: Number, enum: [1440, 120, 60, 30], required: true },
+  scheduledAt: { type: Date, required: true },
+  status: {
+    type: String,
+    enum: ["scheduled", "processing", "processed", "cancelled"],
+    default: "scheduled",
+  },
+  inAppStatus: {
+    type: String,
+    enum: ["pending", "delivered", "cancelled"],
+    default: "pending",
+  },
+  emailStatus: {
+    type: String,
+    enum: ["pending", "sending", "accepted", "failed", "unconfigured", "unknown", "cancelled"],
+    default: "pending",
+  },
+  emailErrorCode: { type: String, default: "", maxlength: 48 },
+  emailAttemptedAt: { type: Date, default: null },
+  emailAcceptedAt: { type: Date, default: null },
+  leaseUntil: { type: Date, default: null },
+});
+
+const readinessChecklistSchema = new mongoose.Schema(
+  {
+    bringDocuments: { type: Boolean, default: false },
+    prepareQuestions: { type: Boolean, default: false },
+    confirmTransport: { type: Boolean, default: false },
+    arriveEarly: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const reminderPreferencesSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: true },
+    offsetsMinutes: { type: [Number], default: [1440, 120] },
+  },
+  { _id: false }
+);
+
 const appointmentSchema = new mongoose.Schema(
   {
     userId: {
@@ -108,6 +150,11 @@ const appointmentSchema = new mongoose.Schema(
       required: [true, "Appointment time is required"],
       match: [/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:mm format"],
     },
+    timeZone: { type: String, default: "Asia/Kolkata", trim: true, maxlength: 80 },
+    reminderPreferences: { type: reminderPreferencesSchema, default: () => ({}) },
+    reminders: { type: [reminderSchema], default: [] },
+    remindersInitialized: { type: Boolean, default: false },
+    readinessChecklist: { type: readinessChecklistSchema, default: () => ({}) },
     reason: {
       type: String,
       default: "",
@@ -124,5 +171,6 @@ const appointmentSchema = new mongoose.Schema(
 );
 
 appointmentSchema.index({ userId: 1, date: 1, time: 1 });
+appointmentSchema.index({ status: 1, "reminders.status": 1, "reminders.scheduledAt": 1 });
 
 export default mongoose.model("Appointment", appointmentSchema);

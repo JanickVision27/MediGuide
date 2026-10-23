@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import MedicineCard from '../components/MedicineCard.jsx'
 import FallbackMedicineCard from '../components/FallbackMedicineCard.jsx'
+import PrescriptionMedicineCard from '../components/PrescriptionMedicineCard.jsx'
 import MedicineModal from '../components/MedicineModal.jsx'
 import AIMedicineCard from '../components/AIMedicineCard.jsx'
 import { API_BASE } from '../utils/medicine.js'
@@ -923,12 +924,17 @@ export default function Medicines() {
 
         {notFound.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">
-              Not in our sample data ({notFound.length})
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                Not in our sample data ({notFound.length})
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                These names came from the prescription. Verify the extracted text, then request Groq details individually.
+              </p>
+            </div>
+            <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {notFound.map((name) => (
-                <FallbackMedicineCard key={name} name={name} />
+                <PrescriptionMedicineCard key={name} name={name} />
               ))}
             </div>
           </div>

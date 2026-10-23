@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { appointmentDateTimeToUtc } from "./appointmentReminders.js";
 
 let resendClient;
 
@@ -7,6 +8,16 @@ function getResendClient() {
   if (!apiKey) return null;
   if (!resendClient) resendClient = new Resend(apiKey);
   return resendClient;
+}
+
+function getRequiredMailFrom() {
+  const from = process.env.MAIL_FROM?.trim();
+  if (!from) {
+    throw new Error(
+      "MAIL_FROM is required for email notifications. Use a sender on your verified Resend domain."
+    );
+  }
+  return from;
 }
 
 function escapeHtml(value) {
@@ -50,6 +61,129 @@ function detailRow(label, value) {
   </tr>`;
 }
 
+export function getPasswordResetAppUrl() {
+  const configured = process.env.APP_URL?.trim();
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+export function isPasswordResetEmailConfigured() {
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() &&
+    process.env.MAIL_FROM?.trim() &&
+    getPasswordResetAppUrl()
+  );
+}
+
+export function getMissingPasswordResetEmailConfiguration() {
+  const missing = [];
+  if (!process.env.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
+  if (!process.env.MAIL_FROM?.trim()) missing.push("MAIL_FROM");
+  if (!getPasswordResetAppUrl()) missing.push("APP_URL");
+  return missing;
+}
+
+export function safeEmailProviderFailure(error) {
+  const rawCode = error?.providerCode || error?.code || error?.name;
+  const code = typeof rawCode === "string" && rawCode.length <= 32 &&
+    /^[a-z][a-z0-9_-]*$/i.test(rawCode) && !/^[a-z0-9_-]{43}$/i.test(rawCode)
+    ? rawCode
+    : "provider_error";
+  const statusCode = Number.isInteger(error?.providerStatusCode)
+    ? error.providerStatusCode
+    : Number.isInteger(error?.statusCode)
+      ? error.statusCode
+      : undefined;
+  return { providerCode: code, ...(statusCode ? { providerStatusCode: statusCode } : {}) };
+}
+
+export async function sendPasswordResetEmail({ to, resetUrl, expiresInMinutes }) {
+  const resend = getResendClient();
+  if (!resend || !getPasswordResetAppUrl()) return { skipped: true };
+  const from = getRequiredMailFrom();
+  const safeUrl = escapeHtml(resetUrl);
+  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide</h1><h2>Reset your password</h2><p>We received a request to reset the password for your MediGuide account. Use the button below within ${expiresInMinutes} minutes.</p><p><a href="${safeUrl}" style="display:inline-block;background:#1769aa;color:white;padding:12px 20px;border-radius:10px;text-decoration:none">Reset password</a></p><p>If you did not request this, you can ignore this email.</p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. Use synthetic information only.</p></div>`;
+  const result = await resend.emails.send({
+    from,
+    to,
+    subject: "Reset your MediGuide password",
+    html,
+    text: `Reset your MediGuide password within ${expiresInMinutes} minutes: ${resetUrl}\n\nIf you did not request this, ignore this email.`,
+  });
+  if (result.error) {
+    const error = new Error("Resend rejected the password reset email.");
+    Object.assign(error, safeEmailProviderFailure({
+      providerCode: result.error.name || result.error.code,
+      providerStatusCode: result.error.statusCode,
+    }));
+    throw error;
+  }
+  if (!result.data?.id) {
+    const error = new Error("Resend acceptance could not be confirmed.");
+    error.providerCode = "acceptance_unconfirmed";
+    throw error;
+  }
+  return { accepted: true };
+}
+
+export function isAppointmentReminderEmailConfigured() {
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() &&
+    process.env.MAIL_FROM?.trim() &&
+    getPasswordResetAppUrl()
+  );
+}
+
+export async function sendAppointmentReminder({ to, appointment, offsetMinutes, idempotencyKey }) {
+  const resend = getResendClient();
+  const appUrl = getPasswordResetAppUrl();
+  if (!resend || !appUrl) return { skipped: true };
+  const startsAt = appointmentDateTimeToUtc(appointment.date, appointment.time, appointment.timeZone);
+  const formattedWhen = new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: appointment.timeZone,
+  }).format(startsAt);
+  const hospital = appointment.hospital?.name || "your selected hospital";
+  const address = [appointment.hospital?.address, appointment.hospital?.city, appointment.hospital?.state]
+    .filter(Boolean)
+    .join(", ");
+  const period = offsetMinutes % 1440 === 0
+    ? `${offsetMinutes / 1440} day${offsetMinutes === 1440 ? "" : "s"}`
+    : offsetMinutes % 60 === 0
+      ? `${offsetMinutes / 60} hour${offsetMinutes === 60 ? "" : "s"}`
+      : `${offsetMinutes} minutes`;
+  const appointmentsUrl = `${appUrl}/appointments`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide appointment reminder</h1><p>Your appointment is coming up in ${period}.</p><p><strong>${escapeHtml(appointment.doctor)}</strong>${appointment.specialty ? ` · ${escapeHtml(appointment.specialty)}` : ""}<br>${escapeHtml(formattedWhen)}<br>${escapeHtml(hospital)}${address ? `<br>${escapeHtml(address)}` : ""}</p><p><a href="${escapeHtml(appointmentsUrl)}">View your appointments</a></p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. This is not a clinical reminder service.</p></div>`;
+  const result = await resend.emails.send({
+    from: getRequiredMailFrom(),
+    to,
+    subject: "MediGuide appointment reminder",
+    html,
+    text: `Your appointment is coming up in ${period}.\n${appointment.doctor}${appointment.specialty ? ` · ${appointment.specialty}` : ""}\n${formattedWhen}\n${hospital}${address ? `, ${address}` : ""}\nView your appointments: ${appointmentsUrl}\n\nMediGuide is an educational demo, not a clinical reminder service.`,
+  }, { idempotencyKey });
+  if (result.error) {
+    const error = new Error("Resend rejected the appointment reminder.");
+    Object.assign(error, safeEmailProviderFailure({
+      providerCode: result.error.name || result.error.code,
+      providerStatusCode: result.error.statusCode,
+    }));
+    throw error;
+  }
+  if (!result.data?.id) {
+    const error = new Error("Resend acceptance could not be confirmed.");
+    error.providerCode = "acceptance_unconfirmed";
+    throw error;
+  }
+  return { accepted: true };
+}
+
 /**
  * Sends a demo appointment-saved notification to the session-derived patient
  * email. Delivery requires RESEND_API_KEY and a MAIL_FROM sender on a verified
@@ -68,13 +202,7 @@ export async function sendAppointmentConfirmation({
   const resend = getResendClient();
   if (!resend) return { skipped: true };
 
-  const from = process.env.MAIL_FROM?.trim();
-  if (!from) {
-    throw new Error(
-      "MAIL_FROM is required for email notifications. Use a sender on your verified Resend domain."
-    );
-  }
-
+  const from = getRequiredMailFrom();
   const formattedDate = displayDate(date);
   const formattedTime = displayTime(time);
   const hospitalLocation = hospital

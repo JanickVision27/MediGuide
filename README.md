@@ -1,135 +1,175 @@
 # MediGuide
 
-MediGuide is a healthcare assistance platform that brings patient profiles, prescriptions,
-appointments and clinical chat into a single, easy-to-navigate workspace.
+MediGuide is a full-stack healthcare assistance demo with authenticated patient profiles,
+per-user appointments, medicine lookup, map-based hospital search, and educational AI chat.
 
-> ### ⚠️ Educational Demo Disclaimer
->
-> MediGuide is an **educational demonstration project** and is **NOT a real clinical system**.
-> It provides no medical advice, diagnosis or treatment, and must **never** be used to make
-> clinical decisions. All patient records, prescriptions, appointments and chat messages are
-> **entirely synthetic and fictitious** — no real protected health information (PHI) is
-> collected, stored or transmitted. In a medical emergency, contact local emergency services.
+> **Educational demo only:** MediGuide is not a clinical system and does not provide medical
+> advice, diagnosis, or treatment. Use synthetic information only. Never enter real patient
+> records, protected health information (PHI), or other sensitive personal information. In an
+> emergency, contact local emergency services.
 
----
+## Tech stack
 
-## Tech Stack
+- **Frontend:** React 19, React Router 7, Vite 7, Tailwind CSS 3
+- **Backend:** Node.js, Express 5, MongoDB/Mongoose
+- **Authentication:** bcrypt password hashing and JWT sessions in HttpOnly cookies
+- **Validation:** Zod on authentication, profile, and appointment request bodies
 
-| Layer      | Technology                                    |
-| ---------- | --------------------------------------------- |
-| Framework  | React 19                                      |
-| Build tool | Vite 7                                        |
-| Styling    | Tailwind CSS 3                                |
-| Routing    | React Router DOM 7                            |
+## Features
 
----
+- Registration, login, logout, and session restoration
+- Public-only auth pages and protected workspace routes
+- Persistent, account-specific profile editing
+- Per-user appointment booking/cancellation with active-provider verification and a validated
+  snapshot of the hospital selected from the live directory
+- Optional Resend appointment-saved notifications, including the selected hospital
+- Synthetic doctor directory with specialty/location filtering
+- Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
+  and optional Google Places listings/photos
+- Existing medicine search, prescription extraction, and AI chat features
 
-## Getting Started
+## Getting started
 
-The frontend lives in the **`client/`** directory (the repo root is kept free for a future
-`server/` backend).
+### 1. Configure the server
+
+Copy `.env.example` to `.env` in the repository root and set at least:
+
+```dotenv
+MONGODB_URI=mongodb://127.0.0.1:27017/mediguide
+JWT_SECRET=replace-with-a-random-secret-at-least-32-characters-long
+PORT=5000
+CLIENT_ORIGIN=http://localhost:5173
+```
+
+Generate a suitable local secret with:
 
 ```bash
-cd client
-npm install
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+`JWT_SECRET` is required in production. In development, an ephemeral secret is generated when
+one is absent, but all sessions become invalid when the server restarts. `GROQ_API_KEY` is only
+needed for the optional AI features.
+
+Hospital search works without a Google key through Nominatim/Overpass (OpenStreetMap). Set
+`GOOGLE_PLACES_API_KEY` to prefer Google Places listings and photos. Live provider access requires
+internet connectivity; fresh OpenStreetMap results are cached in MongoDB for 24 hours, and stale
+records are clearly labelled if used during an outage. For a public deployment, set
+`HOSPITAL_DIRECTORY_USER_AGENT` to a value identifying the project and a contact, in line with
+Nominatim's usage policy.
+
+#### Optional appointment email notifications
+
+Add your own Resend key to the **root `.env`**, not the frontend environment:
+
+```dotenv
+RESEND_API_KEY=re_your_actual_key
+MAIL_FROM=onboarding@resend.dev
+```
+
+Restart the API after changing `.env`. For Resend's test sender, follow its recipient restrictions.
+To notify other recipients, verify a domain in Resend and change `MAIL_FROM` to an address on that
+domain (for example, `MediGuide <appointments@your-domain.com>`). Test by booking an appointment
+with an allowed account email, then check the inbox/spam folder and API logs.
+
+Without `RESEND_API_KEY`, email notifications are skipped. Delivery runs in the background: an
+email failure is logged but does not block or roll back a saved appointment. A successful booking
+response therefore does not guarantee email delivery. Never commit the real key or share it in chat.
+
+### 2. Start the API
+
+```bash
+cd server
+npm ci
 npm run dev
 ```
 
-Then open the printed URL (default: http://localhost:5173).
+The API validates its configuration, connects to MongoDB, and upserts the synthetic demo doctors
+before listening on `http://localhost:5000`. Seeding is idempotent, so restarts do not create
+duplicates. Startup stops with a clear error if MongoDB or the production auth configuration is
+invalid. The health check is `GET http://localhost:5000/api/health`.
 
-### Other scripts
+### 3. Start the frontend
+
+In another terminal:
 
 ```bash
-npm run build     # production build to client/dist
-npm run preview   # serve the production build locally
+cd client
+npm ci
+npm run dev
 ```
 
----
+Open the Vite URL (normally `http://localhost:5173`). Vite proxies relative `/api` requests to
+the backend, so browser code never needs to call a backend localhost URL directly.
 
-## Project Structure
+### Production build
 
-```
-client/
-├── index.html
-├── package.json
-├── vite.config.js          # dev server: host 0.0.0.0, allowedHosts, /api proxy (commented)
-├── tailwind.config.js      # brand palette + fonts + shadows
-├── postcss.config.js
-└── src/
-    ├── main.jsx            # React entry point
-    ├── App.jsx             # Router: all routes nested under <Layout />
-    ├── index.css           # Tailwind layers + reusable .btn / .card / .badge classes
-    ├── components/
-    │   ├── icons.jsx       # shared inline SVG icon set (no icon library needed)
-    │   └── layout/
-    │       ├── Layout.jsx       # app shell: sidebar + <Outlet /> + footer
-    │       ├── Sidebar.jsx      # persistent navigation (fixed on desktop, drawer on mobile)
-    │       └── MobileHeader.jsx # sticky top bar with hamburger (< lg breakpoint)
-    └── pages/
-        ├── Home.jsx             # hero + disclaimer + feature cards
-        ├── Profile.jsx          # placeholder  → /profile
-        ├── Prescriptions.jsx    # placeholder  → /prescriptions
-        ├── Appointments.jsx     # placeholder  → /appointments
-        ├── ChatUI.jsx           # placeholder  → /chat
-        ├── Login.jsx            # placeholder  → /login
-        └── Register.jsx         # placeholder  → /register
+```bash
+cd client
+npm run build
+npm run preview
 ```
 
----
+## Main routes
 
-## Routing
+| Frontend route | Access | Purpose |
+| --- | --- | --- |
+| `/` | Public | Landing page |
+| `/login`, `/register` | Signed-out only | Account access |
+| `/profile` | Authenticated | Persistent user profile |
+| `/appointments` | Authenticated | Per-user appointments with hospital selection |
+| `/hospitals` | Authenticated | Live map-based hospital directory |
+| `/medicines` | Authenticated | Medicine and prescription lookup |
+| `/prescriptions` | Authenticated | Prescription workspace placeholder |
+| `/chat` | Authenticated | Educational AI assistant |
 
-| Path            | Component         | Status        |
-| --------------- | ----------------- | ------------- |
-| `/`             | `Home.jsx`        | ✅ Built      |
-| `/profile`      | `Profile.jsx`     | 🚧 Placeholder |
-| `/prescriptions`| `Prescriptions.jsx` | 🚧 Placeholder |
-| `/appointments` | `Appointments.jsx`| 🚧 Placeholder |
-| `/chat`         | `ChatUI.jsx`      | 🚧 Placeholder |
-| `/login`        | `Login.jsx`       | 🚧 Placeholder |
-| `/register`     | `Register.jsx`    | 🚧 Placeholder |
-| `*`             | redirects to `/`  | —             |
+### Authentication and appointment API
 
-Every route is nested inside `<Layout />`, so the sidebar is **always visible**. If you need a
-full-bleed page with no sidebar, register it as a *sibling* of the Layout route in `App.jsx`.
+| Endpoint | Description |
+| --- | --- |
+| `POST /api/auth/register` | Create an account and session |
+| `POST /api/auth/login` | Sign in |
+| `POST /api/auth/logout` | Clear the session cookie |
+| `GET /api/auth/me` | Restore the current user |
+| `PATCH /api/auth/profile` | Update allowed profile fields |
+| `GET /api/appointments` | List only the session user's appointments |
+| `POST /api/appointments` | Book with a validated hospital snapshot for the session user |
+| `PATCH /api/appointments/:id/cancel` | Cancel an owned upcoming appointment |
+| `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
+| `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
+| `GET /api/doctors` | List/filter active synthetic doctors |
 
----
+## Project structure
 
-## Contributing — building your feature
+```text
+client/src/
+├── api.js                       # Credentialed API client
+├── context/AuthContext.jsx       # Session and user state
+├── components/auth/             # Protected/public-only route guards
+├── components/layout/           # Public and authenticated app shells
+└── pages/                       # Landing, auth, and workspace pages
 
-The placeholder pages are yours to replace. Each already renders inside `<Layout />`, so the
-sidebar, mobile header and footer are handled for you — just build the page content.
+server/src/
+├── controllers/                 # Auth, appointments, directory, medicines
+├── middleware/requireAuth.js     # Verifies cookie session and loads the user
+├── models/                      # User, Doctor, Hospital, and Appointment schemas
+├── routes/                      # Express API routes
+├── services/                    # AI, lookup, and Resend email services
+├── utils/session.js              # JWT and secure-cookie helpers
+└── validators/                  # Zod request validation
+```
 
-**To add a new page:**
+## Security notes
 
-1. Create `client/src/pages/YourPage.jsx`.
-2. Register the route in `client/src/App.jsx` inside the `<Layout />` route.
-3. Add a nav entry to the `NAV_ITEMS` array at the top of `client/src/components/layout/Sidebar.jsx`.
-4. If you need an icon, add it to `client/src/components/icons.jsx` rather than inlining SVG.
-
-**Styling conventions:**
-
-- Use the `brand` colour palette (`bg-brand-600`, `text-brand-700`, …) defined in
-  `tailwind.config.js` so the whole app stays visually consistent.
-- Reuse the component classes in `src/index.css`: `.btn-primary`, `.btn-secondary`,
-  `.btn-on-dark`, `.btn-outline-light`, `.card`, `.badge`.
-- Keep the soothing blue / white / grey medical theme.
-
-**Safety rule:** never hard-code or commit real patient data. All demo data must be synthetic.
-
----
-
-## Notes for maintainers
-
-- **`npm audit` reports 7 vulnerabilities** — all are transitive **dev-only** dependencies of
-  Tailwind CSS v3 (`braces`, `chokidar`, `micromatch`, `fast-glob`,
-  `postcss-selector-parser`). They are build-time only and are **not shipped** in the production
-  bundle. The only automated fix npm offers is upgrading to Tailwind v4, which is a breaking
-  change and was deliberately not taken. Re-evaluate on the next dependency refresh.
-- When a backend is added, uncomment the `server.proxy` block in `vite.config.js` and call it
-  with **relative URLs** (`/api/...`) — browser code must never target `localhost` directly.
-
----
+- Passwords are hashed with bcrypt and are never returned by the API.
+- Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production.
+- Authentication requests are rate-limited, and login failures use a generic message.
+- Appointment reads and writes are scoped by the verified server-side session.
+- Hospital search/photo endpoints are rate-limited; Google keys remain on the server.
+- Resend keys and patient recipient addresses are used only by the server; notification content
+  is HTML-escaped and recipients come from the authenticated account, not the booking request.
+- Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN`, and use HTTPS in production.
+- This remains an educational demo, not a production healthcare or PHI-storage solution.
 
 ## License
 

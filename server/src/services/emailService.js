@@ -52,8 +52,8 @@ function detailRow(label, value) {
 
 /**
  * Sends a demo appointment-saved notification to the session-derived patient
- * email. Without RESEND_API_KEY, notifications are skipped without affecting
- * appointment creation or application startup.
+ * email. Delivery requires RESEND_API_KEY and a MAIL_FROM sender on a verified
+ * Resend domain. Missing keys skip delivery; failures never affect booking.
  */
 export async function sendAppointmentConfirmation({
   to,
@@ -68,7 +68,13 @@ export async function sendAppointmentConfirmation({
   const resend = getResendClient();
   if (!resend) return { skipped: true };
 
-  const from = process.env.MAIL_FROM?.trim() || "onboarding@resend.dev";
+  const from = process.env.MAIL_FROM?.trim();
+  if (!from) {
+    throw new Error(
+      "MAIL_FROM is required for email notifications. Use a sender on your verified Resend domain."
+    );
+  }
+
   const formattedDate = displayDate(date);
   const formattedTime = displayTime(time);
   const hospitalLocation = hospital

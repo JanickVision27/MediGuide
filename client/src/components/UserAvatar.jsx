@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { getProfilePhoto } from '../api.js'
+import {
+  getCachedProfilePhoto,
+  getProfilePhotoKey,
+  loadProfilePhoto,
+} from '../utils/profilePhotoCache.js'
 
 function getInitials(fullName = '') {
   return fullName
@@ -13,38 +17,45 @@ function getInitials(fullName = '') {
 }
 
 export default function UserAvatar({ user, photoVersion = 0, className = '' }) {
-  const [photoUrl, setPhotoUrl] = useState('')
+  const photoKey = getProfilePhotoKey(user)
+  const [photoResult, setPhotoResult] = useState(() => ({
+    key: photoKey,
+    url: getCachedProfilePhoto(photoKey) || '',
+  }))
   const initials = getInitials(user?.fullName)
   const name = user?.fullName || 'User'
+  const cachedUrl = getCachedProfilePhoto(photoKey)
+  // Never show a previous user's/photo's URL while a new key is loading.
+  const photoUrl = photoResult.key === photoKey ? photoResult.url : cachedUrl || ''
 
   useEffect(() => {
-    const controller = new AbortController()
-    let objectUrl = ''
-    setPhotoUrl('')
+    let active = true
+    const cached = getCachedProfilePhoto(photoKey)
+    setPhotoResult({ key: photoKey, url: cached || '' })
 
-    if (!user?.id || !user.profilePhotoUpdatedAt) {
-      return () => controller.abort()
+    if (!photoKey || cached !== null) {
+      return () => {
+        active = false
+      }
     }
 
-    getProfilePhoto({ signal: controller.signal })
-      .then((blob) => {
-        if (!blob || controller.signal.aborted) return
-        objectUrl = URL.createObjectURL(blob)
-        setPhotoUrl(objectUrl)
+    // The request is shared rather than aborted on unmount: another avatar may
+    // still need it, and the completed response remains available on remount.
+    loadProfilePhoto(photoKey)
+      .then((url) => {
+        if (active) setPhotoResult({ key: photoKey, url })
       })
-      .catch((error) => {
-        if (error.name !== 'AbortError') setPhotoUrl('')
+      .catch(() => {
+        if (active) setPhotoResult({ key: photoKey, url: '' })
       })
 
     return () => {
-      controller.abort()
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      active = false
     }
-  }, [user?.id, user?.profilePhotoUpdatedAt, photoVersion])
+  }, [photoKey, photoVersion])
 
   function handleImageError() {
-    if (photoUrl) URL.revokeObjectURL(photoUrl)
-    setPhotoUrl('')
+    setPhotoResult({ key: photoKey, url: '' })
   }
 
   return (

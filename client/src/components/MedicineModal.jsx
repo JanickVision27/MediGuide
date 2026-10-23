@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import MedicineIcon from './MedicineIcon.jsx'
+import MedicineImage from './MedicineImage.jsx'
 import { DEMO_DISCLAIMER, oneMgSearchUrl } from '../utils/medicine.js'
 import { formatMedicineName, formatClassName } from '../utils/formatName.js'
 
@@ -76,7 +76,7 @@ export default function MedicineModal({ medicine, onClose }) {
       >
         {/* Header */}
         <header className="flex items-start gap-4 border-b border-slate-200 px-6 py-5">
-          <MedicineIcon className="h-14 w-14 shrink-0" />
+          <MedicineImage medicine={medicine} className="h-20 w-20" />
           <div className="min-w-0 flex-1">
             <h2 id="medicine-modal-title" className="break-words text-xl font-extrabold tracking-tight text-slate-900">
               {formatMedicineName(medicine.name)}

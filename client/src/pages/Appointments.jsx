@@ -231,13 +231,15 @@ export default function Appointments() {
 
   const filteredDoctors = useMemo(() => {
     const query = doctorSearch.trim().toLocaleLowerCase()
-    if (!query) return doctors
-    return doctors.filter((doctor) =>
-      `${doctor.name} ${doctor.specialty} ${doctor.location || ''}`
-        .toLocaleLowerCase()
-        .includes(query),
-    )
-  }, [doctors, doctorSearch])
+    const cityQuery = hospitalCity.trim().toLocaleLowerCase()
+    return doctors.filter((doctor) => {
+      const matchesProvider = !query ||
+        `${doctor.name} ${doctor.specialty}`.toLocaleLowerCase().includes(query)
+      const matchesCity = !cityQuery ||
+        (doctor.location || '').toLocaleLowerCase().includes(cityQuery)
+      return matchesProvider && matchesCity
+    })
+  }, [doctors, doctorSearch, hospitalCity])
 
   function resetBookingForm() {
     hospitalRequest.current += 1
@@ -280,11 +282,25 @@ export default function Appointments() {
     setHospitalResultsVisible(true)
   }
 
+  function handleLocationChange(value) {
+    updateHospitalCriteria('city', value)
+    const cityQuery = value.trim().toLocaleLowerCase()
+    setForm((current) => {
+      if (!current.doctorId || !cityQuery) return current
+      const selectedDoctor = doctors.find(
+        (doctor) => getDoctorId(doctor) === current.doctorId,
+      )
+      const matchesCity = selectedDoctor &&
+        (selectedDoctor.location || '').toLocaleLowerCase().includes(cityQuery)
+      return matchesCity ? current : { ...current, doctorId: '' }
+    })
+  }
+
   async function runHospitalSearch() {
     const cityValue = hospitalCity.trim()
     const nameValue = hospitalName.trim()
     if (!cityValue) {
-      setHospitalError('Enter an Indian city to search for a hospital.')
+      setHospitalError('Enter the shared provider and hospital city above first.')
       return
     }
 
@@ -454,7 +470,19 @@ export default function Appointments() {
         <section className="booking-form-card">
           <h2>Book New Appointment</h2>
           <form onSubmit={handleBook}>
-            <label htmlFor="doctor-search">Search providers by name, specialty, or location</label>
+            <label htmlFor="appointment-location">City for provider and hospital</label>
+            <input
+              id="appointment-location"
+              type="text"
+              value={hospitalCity}
+              onChange={(event) => handleLocationChange(event.target.value)}
+              placeholder="e.g. Hyderabad or Pune"
+              maxLength={100}
+              required
+              disabled={submitting}
+            />
+
+            <label htmlFor="doctor-search">Search providers by name or specialty</label>
             <input
               id="doctor-search"
               type="search"
@@ -463,7 +491,7 @@ export default function Appointments() {
                 setDoctorSearch(event.target.value)
                 setForm((current) => ({ ...current, doctorId: '' }))
               }}
-              placeholder="e.g. cardiologist or Pune"
+              placeholder="e.g. cardiologist or Dr. Rahul"
               disabled={doctorsLoading || submitting}
             />
 
@@ -511,25 +539,18 @@ export default function Appointments() {
               <div className="hospital-section-heading">
                 <div>
                   <h3 id="hospital-booking-title">Hospital location</h3>
-                  <p>Search the live directory, then select the hospital for this appointment.</p>
+                  <p>Use the shared appointment city to search the live directory, then select a hospital.</p>
                 </div>
                 {selectedHospital && <span className="hospital-selected-badge">Selected</span>}
               </div>
 
+              <p className="hospital-shared-location">
+                {hospitalCity.trim()
+                  ? <>Provider and hospital city: <strong>{hospitalCity.trim()}</strong>. Edit the shared city above to change both.</>
+                  : 'Enter the shared city above to filter providers and search hospitals.'}
+              </p>
+
               <div className="hospital-search-controls">
-                <div className="hospital-search-field">
-                  <label htmlFor="appointment-hospital-city">City in India</label>
-                  <input
-                    id="appointment-hospital-city"
-                    type="text"
-                    value={hospitalCity}
-                    onChange={(event) => updateHospitalCriteria('city', event.target.value)}
-                    onKeyDown={handleHospitalSearchKey}
-                    placeholder="e.g. Hyderabad"
-                    maxLength={100}
-                    disabled={submitting}
-                  />
-                </div>
                 <div className="hospital-search-field">
                   <label htmlFor="appointment-hospital-name">Hospital name (optional)</label>
                   <input

@@ -128,6 +128,11 @@ npm run preview
 | `/prescriptions` | Authenticated | Prescription workspace placeholder |
 | `/chat` | Authenticated | Educational AI assistant |
 
+Appointment booking provides city and specialty dropdowns, plain-language specialty guidance,
+and name/specialty keyword filtering for the synthetic provider directory. Hospital map actions
+open Google Maps (using the exact Google Places listing when supplied), while hospital data-source
+attribution and the fictional-provider/non-affiliation disclaimers remain visible.
+
 ### Authentication and appointment API
 
 | Endpoint | Description |

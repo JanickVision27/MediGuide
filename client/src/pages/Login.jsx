@@ -47,17 +47,17 @@ export default function Login() {
         </Link>
         <div className="relative py-12">
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand-100">
-            Your care, connected
+            YOUR HEALTHCARE, SIMPLIFIED
           </span>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight">
-            A simpler way to manage your healthcare journey.
+            Better care starts with a clearer path.
           </h1>
           <p className="mt-5 max-w-sm leading-relaxed text-brand-50/90">
-            Sign in to continue to your MediGuide workspace.
+            Manage your healthcare journey with greater clarity, confidence, and convenience.
           </p>
         </div>
         <p className="relative text-xs leading-relaxed text-brand-100/80">
-          Educational demo only. Do not enter real medical or sensitive personal information.
+          MediGuide is an educational demo designed to help you organize your healthcare journey. Please do not enter real medical or sensitive personal information.
         </p>
       </aside>
 
@@ -104,10 +104,13 @@ export default function Login() {
               />
             </div>
             <div>
-              <div className="mb-1.5 flex items-center justify-between gap-3">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
                 <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
                   Password
                 </label>
+                <Link to="/forgot-password" className="ml-auto text-xs font-semibold text-brand-700 hover:text-brand-800">
+                  Forgot password?
+                </Link>
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}

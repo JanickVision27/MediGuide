@@ -26,7 +26,10 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Synthetic doctor directory with specialty/location filtering
 - Live Indian hospital search using OpenStreetMap, 24-hour MongoDB caching, stale-cache fallback,
   and optional Google Places listings/photos
-- Existing medicine search, prescription extraction, and AI chat features
+- Medicine browsing by name/composition, A–Z letter, and listed use/category
+- Name-matched local medicine images with a generic default illustration
+- Prescription image/PDF/text extraction with on-demand Groq details for unmatched medicines
+- Existing medicine AI lookup and chat features
 
 ## Getting started
 
@@ -60,21 +63,23 @@ Nominatim's usage policy.
 
 #### Optional appointment email notifications
 
-Add your own Resend key to the **root `.env`**, not the frontend environment:
+To email every registered user, first add and verify your domain in the Resend dashboard and
+complete its DNS verification. Then configure the **root `.env`**, not the frontend environment:
 
 ```dotenv
 RESEND_API_KEY=re_your_actual_key
-MAIL_FROM=onboarding@resend.dev
+MAIL_FROM="MediGuide <appointments@your-verified-domain.com>"
 ```
 
-Restart the API after changing `.env`. For Resend's test sender, follow its recipient restrictions.
-To notify other recipients, verify a domain in Resend and change `MAIL_FROM` to an address on that
-domain (for example, `MediGuide <appointments@your-domain.com>`). Test by booking an appointment
-with an allowed account email, then check the inbox/spam folder and API logs.
+Replace both placeholders with your own values. `MAIL_FROM` must be a sender on the verified
+domain; it cannot be an arbitrary user's email address. Restart the API after changing `.env`,
+then book an appointment and check the recipient's inbox/spam folder and the API logs.
 
-Without `RESEND_API_KEY`, email notifications are skipped. Delivery runs in the background: an
-email failure is logged but does not block or roll back a saved appointment. A successful booking
-response therefore does not guarantee email delivery. Never commit the real key or share it in chat.
+Without `RESEND_API_KEY`, email notifications are skipped. If a key is configured without
+`MAIL_FROM`, the API logs a configuration error instead of using a shared testing sender. Delivery
+runs in the background: an email failure is logged but does not block or roll back a saved
+appointment. A successful booking response therefore does not guarantee email delivery. Never
+commit the real key or share it in chat.
 
 ### 2. Start the API
 
@@ -123,6 +128,11 @@ npm run preview
 | `/prescriptions` | Authenticated | Prescription workspace placeholder |
 | `/chat` | Authenticated | Educational AI assistant |
 
+Appointment booking provides city and specialty dropdowns with plain-language guidance to filter
+the synthetic provider directory. Hospital map actions open Google Maps (using the exact Google
+Places listing when supplied), while hospital data-source
+attribution and the fictional-provider/non-affiliation disclaimers remain visible.
+
 ### Authentication and appointment API
 
 | Endpoint | Description |
@@ -138,6 +148,7 @@ npm run preview
 | `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
 | `GET /api/doctors` | List/filter active synthetic doctors |
+| `GET /api/medicines` | Search/filter medicines by `search`, `letter`, and `category` |
 
 ## Project structure
 

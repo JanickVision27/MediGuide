@@ -363,10 +363,6 @@ export default function Profile() {
               {renderListField('Allergies', 'allergies', patient.allergies, 'e.g. Penicillin')}
               {renderListField('Current Medications', 'medications', patient.medications, 'e.g. Vitamin D')}
             </div>
-            <p className="medical-note">
-              <ShieldCheckIcon />
-              <span>Educational demo only. Do not enter real medical information; this is not medical advice.</span>
-            </p>
           </section>
         </div>
 

@@ -162,7 +162,6 @@ export default function Appointments() {
   const [doctors, setDoctors] = useState([])
   const [doctorsLoading, setDoctorsLoading] = useState(true)
   const [doctorError, setDoctorError] = useState('')
-  const [doctorSearch, setDoctorSearch] = useState('')
   const [doctorSpecialty, setDoctorSpecialty] = useState('')
   const [activeTab, setActiveTab] = useState('Upcoming')
   const [showForm, setShowForm] = useState(false)
@@ -279,22 +278,18 @@ export default function Appointments() {
   }, [doctors, hospitalCity])
 
   const filteredDoctors = useMemo(() => {
-    const query = doctorSearch.trim().toLocaleLowerCase()
     const cityQuery = hospitalCity.trim().toLocaleLowerCase()
     return doctors.filter((doctor) => {
-      const matchesProvider = !query ||
-        `${doctor.name} ${doctor.specialty}`.toLocaleLowerCase().includes(query)
       const matchesCity = !cityQuery ||
         (doctor.location || '').trim().toLocaleLowerCase() === cityQuery
       const matchesSpecialty = !doctorSpecialty || doctor.specialty === doctorSpecialty
-      return matchesProvider && matchesCity && matchesSpecialty
+      return matchesCity && matchesSpecialty
     })
-  }, [doctors, doctorSearch, doctorSpecialty, hospitalCity])
+  }, [doctors, doctorSpecialty, hospitalCity])
 
   function resetBookingForm() {
     hospitalRequest.current += 1
     setForm({ doctorId: '', date: '', time: '', reason: '' })
-    setDoctorSearch('')
     setDoctorSpecialty('')
     setHospitalCity('')
     setHospitalName('')
@@ -558,7 +553,7 @@ export default function Appointments() {
               ))}
             </select>
 
-            <label htmlFor="doctor-specialty">Specialty (optional)</label>
+            <label htmlFor="doctor-specialty">Specialty</label>
             <select
               id="doctor-specialty"
               value={doctorSpecialty}
@@ -575,19 +570,6 @@ export default function Appointments() {
                 </option>
               ))}
             </select>
-
-            <label htmlFor="doctor-search">Search providers by name or specialty</label>
-            <input
-              id="doctor-search"
-              type="search"
-              value={doctorSearch}
-              onChange={(event) => {
-                setDoctorSearch(event.target.value)
-                setForm((current) => ({ ...current, doctorId: '' }))
-              }}
-              placeholder="e.g. cardiologist or Dr. Rahul"
-              disabled={doctorsLoading || submitting}
-            />
 
             <label htmlFor="doctor">Select Doctor</label>
             <select

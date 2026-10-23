@@ -75,13 +75,16 @@ APP_URL=http://localhost:5173
 
 Replace the placeholders with your own values. `MAIL_FROM` must be a sender on the verified domain;
 it cannot be an arbitrary user's email address. `APP_URL` is the public frontend origin used in
-password-reset and appointment-reminder links. Restart the API after changing `.env`.
+password-reset and appointment-reminder links. If `APP_URL` is omitted, the API uses the first valid
+origin in `CLIENT_ORIGIN` (or `CLIENT_URL`). Set `APP_URL` explicitly when the browser origin differs
+from the CORS origin. Restart the API after changing `.env`.
 
 Without `RESEND_API_KEY`, email notifications are skipped. All delivery requires `MAIL_FROM`;
-password resets and reminders also require `APP_URL`. The API never substitutes a shared testing
-sender. Appointment delivery runs in the background: an email failure is logged but does not block
-or roll back a saved appointment. Password-reset requests always return a generic response to
-avoid revealing whether an account exists. Never commit the real key or share it in chat.
+password resets and reminders also require `APP_URL` or a valid frontend-origin fallback. The API
+never substitutes a shared testing sender. Appointment delivery runs in the background: an email
+failure is logged but does not block or roll back a saved appointment. Password-reset requests
+always return a generic response to avoid revealing whether an account exists. Never commit the
+real key or share it in chat.
 
 ### 2. Start the API
 

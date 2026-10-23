@@ -36,8 +36,38 @@
   cursor: pointer;
 }
 
-.book-appointment-btn:hover {
+.book-appointment-btn:hover:not(:disabled) {
   background: #0848b5;
+}
+
+.book-appointment-btn:disabled,
+.cancel-appointment-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.appointment-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 15px;
+  margin-bottom: 18px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+.appointment-error button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .appointment-message {
@@ -121,8 +151,300 @@
   font-size: 14px;
 }
 
+.booking-form-card input:disabled,
+.booking-form-card select:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
 .booking-form-card .book-appointment-btn {
   margin-top: 8px;
+}
+
+/* Live hospital selection inside booking */
+.hospital-booking-section {
+  grid-column: 1 / -1;
+  margin: 8px 0;
+  padding: 18px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.hospital-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.hospital-section-heading h3 {
+  margin: 0 0 5px;
+  color: #172033;
+  font-size: 17px;
+}
+
+.hospital-section-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hospital-selected-badge {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.hospital-search-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.hospital-search-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.booking-form-card .hospital-search-btn {
+  min-height: 42px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.hospital-search-status {
+  margin: 13px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.hospital-search-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.hospital-search-error button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.selected-hospital-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 15px;
+  padding: 15px;
+  border: 1px solid #86c9aa;
+  border-radius: 9px;
+  background: #f0fdf4;
+}
+
+.selected-hospital-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #16734b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.selected-hospital-card h4,
+.hospital-result h4 {
+  margin: 0 0 6px;
+  color: #172033;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.selected-hospital-card p,
+.hospital-result p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.selected-hospital-card small {
+  display: block;
+  margin-top: 7px;
+  color: #567466;
+  font-size: 11px;
+}
+
+.selected-hospital-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 9px;
+  align-items: flex-end;
+}
+
+.selected-hospital-actions a,
+.selected-hospital-actions button,
+.hospital-result-footer a {
+  border: 0;
+  background: transparent;
+  color: #145bd1;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.selected-hospital-actions a:hover,
+.selected-hospital-actions button:hover,
+.hospital-result-footer a:hover {
+  text-decoration: underline;
+}
+
+.hospital-results-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 15px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hospital-results-meta small {
+  color: #718096;
+  font-weight: 400;
+}
+
+.hospital-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hospital-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 13px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.hospital-result.selected {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px #60a5fa;
+}
+
+.hospital-result-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #edf2f7;
+}
+
+.hospital-select-btn {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border: 1px solid #145bd1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #145bd1;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hospital-select-btn:hover:not(:disabled) {
+  background: #145bd1;
+  color: #ffffff;
+}
+
+.hospital-select-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hospital-search-notice {
+  margin: 12px 0 0;
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Saved hospital snapshot on an appointment */
+.appointment-hospital {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e1e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.appointment-hospital p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.appointment-hospital p.appointment-hospital-name {
+  margin: 0 0 5px;
+  color: #263b53;
+  font-weight: 700;
+}
+
+.appointment-hospital a {
+  display: inline-block;
+  margin-top: 8px;
+  color: #145bd1;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.appointment-hospital a:hover {
+  text-decoration: underline;
+}
+
+.appointment-hospital small {
+  display: block;
+  margin-top: 7px;
+  color: #8491a2;
+  font-size: 10px;
 }
 
 /* Appointment rows */
@@ -192,6 +514,13 @@
   font-size: 15px;
 }
 
+.doctor-details > p.appointment-reason {
+  margin: 12px 0 0;
+  color: #536174;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .appointment-datetime {
   display: flex;
   flex-wrap: wrap;
@@ -250,7 +579,7 @@
   cursor: pointer;
 }
 
-.cancel-appointment-btn:hover {
+.cancel-appointment-btn:hover:not(:disabled) {
   background: #eff6ff;
 }
 
@@ -277,6 +606,16 @@
   color: #7a8493;
   font-size: 12px;
   text-align: center;
+}
+
+@media (max-width: 850px) {
+  .hospital-search-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hospital-search-btn {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Tablet */
@@ -361,5 +700,26 @@
 
   .booking-form-card form {
     grid-template-columns: 1fr;
+  }
+
+  .hospital-booking-section {
+    padding: 14px;
+  }
+
+  .hospital-search-controls,
+  .hospital-results {
+    grid-template-columns: 1fr;
+  }
+
+  .hospital-search-btn {
+    grid-column: auto;
+  }
+
+  .selected-hospital-card {
+    flex-direction: column;
+  }
+
+  .selected-hospital-actions {
+    align-items: flex-start;
   }
 }

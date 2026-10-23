@@ -68,6 +68,13 @@ export const loginSchema = z
   })
   .strict();
 
+export const forgotPasswordSchema = z.object({ email }).strict();
+
+export const resetPasswordSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Reset link is invalid or expired"),
+  password,
+}).strict();
+
 export const profileSchema = z
   .object({
     fullName: fullName.optional(),

@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 import { validateBody } from "./authValidator.js";
+import { SUPPORTED_REMINDER_OFFSETS, validateTimeZone } from "../services/appointmentReminders.js";
+
+export { validateBody };
 
 function isCalendarDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -64,8 +67,25 @@ export const appointmentSchema = z
     time: z
       .string()
       .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Time must use 24-hour HH:mm"),
+    timeZone: z.string().trim().min(1).max(80).refine(validateTimeZone, "Select a valid timezone").default("Asia/Kolkata"),
     reason: z.string().trim().max(500).optional(),
   })
   .strict();
 
 export const validateAppointment = validateBody(appointmentSchema);
+
+export const reminderPreferencesSchema = z.object({
+  enabled: z.boolean(),
+  offsetsMinutes: z.array(z.number().int().refine((value) => SUPPORTED_REMINDER_OFFSETS.includes(value)))
+    .max(SUPPORTED_REMINDER_OFFSETS.length)
+    .refine((values) => new Set(values).size === values.length, "Select each reminder timing once"),
+}).strict().refine((value) => !value.enabled || value.offsetsMinutes.length > 0, {
+  message: "Choose at least one timing or turn reminders off",
+});
+
+export const readinessChecklistSchema = z.object({
+  bringDocuments: z.boolean(),
+  prepareQuestions: z.boolean(),
+  confirmTransport: z.boolean(),
+  arriveEarly: z.boolean(),
+}).strict();

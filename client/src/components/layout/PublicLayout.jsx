@@ -18,7 +18,7 @@ export default function PublicLayout() {
           </Link>
           <nav className="flex items-center gap-2 sm:gap-3" aria-label="Account navigation">
             {user ? (
-              <Link to="/profile" className="btn-primary px-4 py-2">
+              <Link to="/appointments" className="btn-primary px-4 py-2">
                 Open workspace
               </Link>
             ) : (

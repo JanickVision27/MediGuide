@@ -5,6 +5,7 @@ import {
   createAppointment,
   getAppointments,
   getDoctors,
+  searchHospitals,
 } from '../api.js'
 import './Appointments.css'
 
@@ -50,6 +51,81 @@ function requestError(error, fallback) {
   return error.message || fallback
 }
 
+function safeHospitalSourceUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return ''
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : ''
+  } catch {
+    return ''
+  }
+}
+
+function hospitalMapUrl(hospital) {
+  const coordinates = hospital?.location?.coordinates
+  if (!Array.isArray(coordinates) || coordinates.length !== 2) return ''
+  const longitude = Number(coordinates[0])
+  const latitude = Number(coordinates[1])
+  if (
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(latitude) ||
+    Math.abs(longitude) > 180 ||
+    Math.abs(latitude) > 90
+  ) {
+    return ''
+  }
+  return `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`
+}
+
+// Keep only the location snapshot needed by an appointment. This also prevents
+// photo metadata and other live-provider fields from being posted to booking.
+function normalizeHospital(hospital, fallbackCity) {
+  if (!hospital || typeof hospital !== 'object') return null
+
+  const id = typeof (hospital.id || hospital.osmId) === 'string'
+    ? (hospital.id || hospital.osmId).trim()
+    : ''
+  const name = typeof hospital.name === 'string' ? hospital.name.trim() : ''
+  const address = typeof hospital.address === 'string' ? hospital.address.trim() : ''
+  const city = typeof hospital.city === 'string'
+    ? hospital.city.trim()
+    : fallbackCity.trim()
+  const state = typeof hospital.state === 'string' ? hospital.state.trim() : ''
+  const sourceUrl = safeHospitalSourceUrl(hospital.sourceUrl)
+  const coordinates = hospital.location?.coordinates
+
+  if (
+    !id || id.length > 200 ||
+    name.length < 2 || name.length > 200 ||
+    address.length > 1000 || city.length > 120 || state.length > 120 ||
+    !['OpenStreetMap', 'Google Places'].includes(hospital.source) ||
+    !sourceUrl ||
+    !Array.isArray(coordinates) || coordinates.length !== 2
+  ) {
+    return null
+  }
+
+  const longitude = Number(coordinates[0])
+  const latitude = Number(coordinates[1])
+  if (
+    !Number.isFinite(longitude) || Math.abs(longitude) > 180 ||
+    !Number.isFinite(latitude) || Math.abs(latitude) > 90
+  ) {
+    return null
+  }
+
+  return {
+    id,
+    name,
+    address,
+    city: city || fallbackCity.trim(),
+    state,
+    source: hospital.source,
+    sourceUrl,
+    location: { type: 'Point', coordinates: [longitude, latitude] },
+  }
+}
+
 export default function Appointments() {
   const [appointments, setAppointments] = useState([])
   const [doctors, setDoctors] = useState([])
@@ -64,8 +140,20 @@ export default function Appointments() {
   const [submitting, setSubmitting] = useState(false)
   const [cancellingId, setCancellingId] = useState(null)
   const [form, setForm] = useState({ doctorId: '', date: '', time: '', reason: '' })
+  const [hospitalCity, setHospitalCity] = useState('')
+  const [hospitalName, setHospitalName] = useState('')
+  const [hospitalResults, setHospitalResults] = useState([])
+  const [selectedHospital, setSelectedHospital] = useState(null)
+  const [hospitalLoading, setHospitalLoading] = useState(false)
+  const [hospitalError, setHospitalError] = useState('')
+  const [hospitalNotice, setHospitalNotice] = useState('')
+  const [hospitalSearched, setHospitalSearched] = useState(false)
+  const [hospitalSource, setHospitalSource] = useState('')
+  const [hospitalCached, setHospitalCached] = useState(false)
+  const [hospitalResultsVisible, setHospitalResultsVisible] = useState(true)
   const appointmentRequest = useRef(0)
   const doctorRequest = useRef(0)
+  const hospitalRequest = useRef(0)
 
   const today = getToday()
 
@@ -113,6 +201,7 @@ export default function Appointments() {
     return () => {
       appointmentRequest.current += 1
       doctorRequest.current += 1
+      hospitalRequest.current += 1
     }
   }, [loadAppointments, loadDoctors])
 
@@ -150,6 +239,96 @@ export default function Appointments() {
     )
   }, [doctors, doctorSearch])
 
+  function resetBookingForm() {
+    hospitalRequest.current += 1
+    setForm({ doctorId: '', date: '', time: '', reason: '' })
+    setDoctorSearch('')
+    setHospitalCity('')
+    setHospitalName('')
+    setHospitalResults([])
+    setSelectedHospital(null)
+    setHospitalLoading(false)
+    setHospitalError('')
+    setHospitalNotice('')
+    setHospitalSearched(false)
+    setHospitalSource('')
+    setHospitalCached(false)
+    setHospitalResultsVisible(true)
+  }
+
+  function toggleBookingForm() {
+    if (showForm) resetBookingForm()
+    setShowForm((visible) => !visible)
+    setMessage('')
+    setError('')
+  }
+
+  function updateHospitalCriteria(field, value) {
+    // Results for previous criteria must never remain selectable under a newly
+    // typed city/name, including while an older request is still resolving.
+    hospitalRequest.current += 1
+    if (field === 'city') setHospitalCity(value)
+    else setHospitalName(value)
+    setHospitalLoading(false)
+    setHospitalResults([])
+    setSelectedHospital(null)
+    setHospitalError('')
+    setHospitalNotice('')
+    setHospitalSearched(false)
+    setHospitalSource('')
+    setHospitalCached(false)
+    setHospitalResultsVisible(true)
+  }
+
+  async function runHospitalSearch() {
+    const cityValue = hospitalCity.trim()
+    const nameValue = hospitalName.trim()
+    if (!cityValue) {
+      setHospitalError('Enter an Indian city to search for a hospital.')
+      return
+    }
+
+    const currentRequest = ++hospitalRequest.current
+    setHospitalLoading(true)
+    setHospitalError('')
+    setHospitalNotice('')
+    setHospitalSearched(true)
+    setHospitalResults([])
+    setSelectedHospital(null)
+    setHospitalSource('')
+    setHospitalCached(false)
+    setHospitalResultsVisible(true)
+
+    try {
+      const result = await searchHospitals({ city: cityValue, name: nameValue })
+      if (currentRequest !== hospitalRequest.current) return
+      const records = Array.isArray(result.results)
+        ? result.results
+        : result.hospitals || []
+      const normalized = Array.isArray(records)
+        ? records.map((hospital) => normalizeHospital(hospital, cityValue)).filter(Boolean)
+        : []
+      setHospitalResults(normalized)
+      setHospitalSource(result.source || 'OpenStreetMap')
+      setHospitalCached(Boolean(result.cached))
+      setHospitalNotice(result.notice || '')
+    } catch (err) {
+      if (currentRequest === hospitalRequest.current) {
+        setHospitalResults([])
+        setHospitalError(requestError(err, 'Unable to search hospitals. Please try again.'))
+      }
+    } finally {
+      if (currentRequest === hospitalRequest.current) setHospitalLoading(false)
+    }
+  }
+
+  function handleHospitalSearchKey(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (!hospitalLoading && !submitting) runHospitalSearch()
+    }
+  }
+
   async function handleBook(event) {
     event.preventDefault()
     setMessage('')
@@ -165,6 +344,11 @@ export default function Appointments() {
     )
     if (!selectedDoctor) {
       setError('Please select a doctor from the current directory.')
+      return
+    }
+
+    if (!selectedHospital) {
+      setError('Search for and select a hospital location before booking.')
       return
     }
 
@@ -185,6 +369,7 @@ export default function Appointments() {
       const result = await createAppointment({
         doctor: selectedDoctor.name,
         specialty: selectedDoctor.specialty,
+        hospital: selectedHospital,
         date: form.date,
         time: form.time,
         reason: form.reason.trim(),
@@ -196,9 +381,8 @@ export default function Appointments() {
       setAppointments((current) => [...current, result.appointment])
       setActiveTab('Upcoming')
       setShowForm(false)
-      setDoctorSearch('')
-      setForm({ doctorId: '', date: '', time: '', reason: '' })
-      setMessage('Appointment saved successfully.')
+      resetBookingForm()
+      setMessage('Appointment and hospital location saved successfully.')
     } catch (err) {
       setError(requestError(err, 'Unable to book appointment. Please try again.'))
     } finally {
@@ -236,12 +420,8 @@ export default function Appointments() {
         <h1>Appointments</h1>
         <button
           className="book-appointment-btn"
-          onClick={() => {
-            setShowForm((visible) => !visible)
-            setMessage('')
-            setError('')
-          }}
-          disabled={doctorsLoading || doctors.length === 0}
+          onClick={toggleBookingForm}
+          disabled={doctorsLoading || doctors.length === 0 || submitting}
           type="button"
         >
           <span>▦</span>
@@ -327,6 +507,150 @@ export default function Appointments() {
               disabled={submitting}
             />
 
+            <section className="hospital-booking-section" aria-labelledby="hospital-booking-title">
+              <div className="hospital-section-heading">
+                <div>
+                  <h3 id="hospital-booking-title">Hospital location</h3>
+                  <p>Search the live directory, then select the hospital for this appointment.</p>
+                </div>
+                {selectedHospital && <span className="hospital-selected-badge">Selected</span>}
+              </div>
+
+              <div className="hospital-search-controls">
+                <div className="hospital-search-field">
+                  <label htmlFor="appointment-hospital-city">City in India</label>
+                  <input
+                    id="appointment-hospital-city"
+                    type="text"
+                    value={hospitalCity}
+                    onChange={(event) => updateHospitalCriteria('city', event.target.value)}
+                    onKeyDown={handleHospitalSearchKey}
+                    placeholder="e.g. Hyderabad"
+                    maxLength={100}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="hospital-search-field">
+                  <label htmlFor="appointment-hospital-name">Hospital name (optional)</label>
+                  <input
+                    id="appointment-hospital-name"
+                    type="text"
+                    value={hospitalName}
+                    onChange={(event) => updateHospitalCriteria('name', event.target.value)}
+                    onKeyDown={handleHospitalSearchKey}
+                    placeholder="e.g. Apollo"
+                    maxLength={100}
+                    disabled={submitting}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="book-appointment-btn hospital-search-btn"
+                  onClick={runHospitalSearch}
+                  disabled={hospitalLoading || submitting}
+                >
+                  {hospitalLoading ? 'Searching…' : 'Search hospitals'}
+                </button>
+              </div>
+
+              {hospitalLoading && (
+                <p className="hospital-search-status" role="status">
+                  Finding mapped hospitals near {hospitalCity.trim()}…
+                </p>
+              )}
+              {hospitalError && (
+                <div className="hospital-search-error" role="alert">
+                  <span>{hospitalError}</span>
+                  {!hospitalLoading && (
+                    <button type="button" onClick={runHospitalSearch}>Try again</button>
+                  )}
+                </div>
+              )}
+
+              {selectedHospital && (
+                <div className="selected-hospital-card">
+                  <div>
+                    <span className="selected-hospital-label">Selected hospital</span>
+                    <h4>{selectedHospital.name}</h4>
+                    <p>{selectedHospital.address || 'Address not available in map data'}</p>
+                    {(selectedHospital.city || selectedHospital.state) && (
+                      <p>{[selectedHospital.city, selectedHospital.state].filter(Boolean).join(', ')}</p>
+                    )}
+                    <small>Hospital data: {selectedHospital.source}</small>
+                  </div>
+                  <div className="selected-hospital-actions">
+                    <a href={hospitalMapUrl(selectedHospital)} target="_blank" rel="noreferrer">
+                      View location ↗
+                    </a>
+                    {hospitalResults.length > 1 && !hospitalResultsVisible && (
+                      <button type="button" onClick={() => setHospitalResultsVisible(true)}>
+                        Change hospital
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {hospitalResultsVisible && hospitalResults.length > 0 && (
+                <>
+                  <div className="hospital-results-meta">
+                    <span>{hospitalResults.length} selectable hospitals</span>
+                    <small>
+                      {hospitalSource}{hospitalCached ? ' · Cached' : ' · Live'}
+                    </small>
+                  </div>
+                  <ul className="hospital-results" aria-label="Hospital search results">
+                    {hospitalResults.map((hospital) => {
+                      const selected = selectedHospital?.id === hospital.id
+                      return (
+                        <li className={`hospital-result${selected ? ' selected' : ''}`} key={hospital.id}>
+                          <h4>{hospital.name}</h4>
+                          <p>{hospital.address || 'Address not available in map data'}</p>
+                          {(hospital.city || hospital.state) && (
+                            <p>{[hospital.city, hospital.state].filter(Boolean).join(', ')}</p>
+                          )}
+                          <div className="hospital-result-footer">
+                            <a
+                              href={hospitalMapUrl(hospital)}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`View ${hospital.name} on a map`}
+                            >
+                              View map ↗
+                            </a>
+                            <button
+                              type="button"
+                              className="hospital-select-btn"
+                              disabled={selected || submitting}
+                              onClick={() => {
+                                setSelectedHospital(hospital)
+                                setHospitalResultsVisible(false)
+                                setHospitalError('')
+                                setError('')
+                              }}
+                            >
+                              {selected ? 'Selected' : 'Select hospital'}
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
+              )}
+
+              {!hospitalLoading && !hospitalError && hospitalSearched && hospitalResults.length === 0 && (
+                <p className="hospital-search-status">
+                  No selectable mapped hospitals found. Try another city or remove the name filter.
+                </p>
+              )}
+              {hospitalNotice && <p className="hospital-search-notice">{hospitalNotice}</p>}
+              <p className="hospital-search-notice">
+                Selecting a hospital saves its displayed location; it does not confirm doctor
+                affiliation, availability, or a real-world booking.
+              </p>
+            </section>
+
             <label htmlFor="reason">Reason for visit (optional)</label>
             <input
               id="reason"
@@ -387,6 +711,8 @@ export default function Appointments() {
               .toUpperCase() || 'D'
             const status = appointment.status || 'Upcoming'
             const canCancel = status === 'Upcoming' && appointment.date >= today
+            const hospital = appointment.hospital
+            const mapUrl = hospitalMapUrl(hospital)
 
             return (
               <article className="appointment-row" key={id || `${doctorName}-${appointment.date}-${appointment.time}`}>
@@ -399,6 +725,21 @@ export default function Appointments() {
                     <span className="datetime-divider">|</span>
                     <span>◷ {formatTime(appointment.time)}</span>
                   </div>
+                  {hospital?.name && (
+                    <div className="appointment-hospital">
+                      <p className="appointment-hospital-name">🏥 {hospital.name}</p>
+                      <p>{hospital.address || 'Address not available in map data'}</p>
+                      {(hospital.city || hospital.state) && (
+                        <p>{[hospital.city, hospital.state].filter(Boolean).join(', ')}</p>
+                      )}
+                      {mapUrl && (
+                        <a href={mapUrl} target="_blank" rel="noreferrer">
+                          View hospital location ↗
+                        </a>
+                      )}
+                      <small>Hospital data: {hospital.source}</small>
+                    </div>
+                  )}
                   {appointment.reason && (
                     <p className="appointment-reason">Reason: {appointment.reason}</p>
                   )}
@@ -436,8 +777,9 @@ export default function Appointments() {
       </section>
 
       <p className="appointments-disclaimer">
-        Demo provider directory only. These are sample records, not verified real-world clinicians.
-        Doctor availability and time slots are not verified.
+        Demo providers are synthetic and are not verified as affiliated with selected hospitals.
+        Hospital listings come from map providers; availability and appointments are not confirmed
+        with the hospital.
       </p>
     </div>
   )

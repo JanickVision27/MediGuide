@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 import Appointment from "../models/Appointment.js";
 import Doctor from "../models/Doctor.js";
+import { sendAppointmentConfirmation } from "../services/emailService.js";
 
 function localDateString(date = new Date()) {
   const year = date.getFullYear();
@@ -23,7 +24,13 @@ export async function getAppointments(req, res, next) {
 
 export async function createAppointment(req, res, next) {
   try {
-    const { doctor, specialty, date, time, reason = "" } = req.body;
+    const { doctor, specialty, hospital, date, time, reason = "" } = req.body;
+
+    if (!hospital) {
+      return res.status(400).json({
+        message: "Select a hospital location for the appointment.",
+      });
+    }
 
     if (date < localDateString()) {
       return res.status(400).json({
@@ -63,10 +70,28 @@ export async function createAppointment(req, res, next) {
       patientEmail: req.user.email,
       doctor: selectedDoctor.name,
       specialty: selectedDoctor.specialty,
+      // Preserve the selected directory result with the booking. Later changes
+      // to a live hospital listing must not rewrite an existing appointment.
+      hospital,
       date,
       time,
       reason,
       status: "Upcoming",
+    });
+
+    // Notification delivery is deliberately fire-and-forget. A Resend outage or
+    // missing key must never roll back or delay an otherwise successful booking.
+    void sendAppointmentConfirmation({
+      to: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctor: appointment.doctor,
+      specialty: appointment.specialty,
+      hospital: appointment.hospital,
+      date: appointment.date,
+      time: appointment.time,
+      reason: appointment.reason,
+    }).catch((error) => {
+      console.error("Appointment confirmation email failed:", error.message);
     });
 
     return res.status(201).json({

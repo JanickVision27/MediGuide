@@ -1,158 +1,152 @@
-import Appointment from "../models/appointment.js";
+import mongoose from "mongoose";
 
-// Validate date format: YYYY-MM-DD
-function validDate(date) {
-  if (typeof date !== "string") {
-    return false;
-  }
+import Appointment from "../models/Appointment.js";
+import Doctor from "../models/Doctor.js";
+import { sendAppointmentConfirmation } from "../services/emailService.js";
+import { appointmentDateTimeToUtc, buildReminderSchedule, DEFAULT_REMINDER_OFFSETS } from "../services/appointmentReminders.js";
 
-  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-
-  if (!match) {
-    return false;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-
-  const parsedDate = new Date(Date.UTC(year, month - 1, day));
-
-  return (
-    parsedDate.getUTCFullYear() === year &&
-    parsedDate.getUTCMonth() === month - 1 &&
-    parsedDate.getUTCDate() === day
-  );
-}
-// Validate time format: HH:mm (24-hour format)
-function validTime(time) {
-  return (
-    typeof time === "string" &&
-    /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-  );
-}
-
-// GET: Get all appointments
-export async function getAppointments(req, res) {
+export async function getAppointments(req, res, next) {
   try {
-    const filter = {};
-
-    if (req.query.patientEmail) {
-      filter.patientEmail = req.query.patientEmail;
-    }
-
-    const appointments = await Appointment.find(filter).sort({
+    const appointments = await Appointment.find({ userId: req.userId }).sort({
       createdAt: -1,
     });
-
     return res.status(200).json(appointments);
   } catch (error) {
-    console.error("Get appointments error:", error.message);
-
-    return res.status(500).json({
-      message: "Failed to fetch appointments",
-    });
+    return next(error);
   }
 }
 
-// POST: Create an appointment
-export async function createAppointment(req, res) {
+export async function createAppointment(req, res, next) {
   try {
-    const {
-      patientName,
-      patientEmail,
-      doctor,
+    const { doctor, specialty, hospital, date, time, timeZone, reason = "" } = req.body;
+
+    if (!hospital) {
+      return res.status(400).json({
+        message: "Select a hospital location for the appointment.",
+      });
+    }
+
+    let appointmentAt;
+    try {
+      appointmentAt = appointmentDateTimeToUtc(date, time, timeZone);
+    } catch {
+      return res.status(400).json({ message: "Select a valid appointment time and timezone." });
+    }
+    if (appointmentAt <= new Date()) {
+      return res.status(400).json({
+        message: "Appointment time must be in the future.",
+      });
+    }
+
+    // Never trust provider details posted by the browser. The selected doctor
+    // must still be active in the current directory.
+    const selectedDoctor = await Doctor.findOne({
+      name: doctor,
       specialty,
+      active: true,
+    }).select("name specialty");
+    if (!selectedDoctor) {
+      return res.status(400).json({
+        message: "Please choose a provider from the current directory.",
+      });
+    }
+
+    const conflict = await Appointment.exists({
+      userId: req.userId,
+      doctor: selectedDoctor.name,
       date,
       time,
-      reason,
-    } = req.body;
-
-    // Check date and time
-  console.log("Request body:", req.body);
-console.log("Date value:", date, typeof date);
-console.log("Time value:", time, typeof time);
-
-if (!validDate(date)) {
-  return res.status(400).json({
-    message: "Invalid date",
-    receivedDate: date
-  });
-}
-
-if (!validTime(time)) {
-  return res.status(400).json({
-    message: "Invalid time",
-    receivedTime: time
-  });
-}
-    // Reject past dates (server's local date)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const appointmentDay = new Date(`${date}T00:00:00`);
-    if (appointmentDay < today) {
-      return res.status(400).json({
-        message: "Appointment date cannot be in the past",
+      status: "Upcoming",
+    });
+    if (conflict) {
+      return res.status(409).json({
+        message: "You already have this doctor booked at that time.",
       });
     }
 
-    // Check required fields
-    if (!patientName || !doctor || !specialty) {
-      return res.status(400).json({
-        message: "Please provide patient name, doctor, and specialty",
-      });
-    }
-
-    // Save appointment to MongoDB
     const appointment = await Appointment.create({
-      patientName,
-      patientEmail,
-      doctor,
-      specialty,
+      userId: req.userId,
+      patientName: req.user.fullName,
+      patientEmail: req.user.email,
+      doctor: selectedDoctor.name,
+      specialty: selectedDoctor.specialty,
+      // Preserve the selected directory result with the booking. Later changes
+      // to a live hospital listing must not rewrite an existing appointment.
+      hospital,
       date,
       time,
+      timeZone,
+      reminderPreferences: { enabled: true, offsetsMinutes: [...DEFAULT_REMINDER_OFFSETS] },
+      reminders: buildReminderSchedule({ date, time, timeZone }),
+      remindersInitialized: true,
+      readinessChecklist: {},
       reason,
       status: "Upcoming",
     });
 
+    // Notification delivery is deliberately fire-and-forget. A Resend outage or
+    // missing key must never roll back or delay an otherwise successful booking.
+    void sendAppointmentConfirmation({
+      to: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctor: appointment.doctor,
+      specialty: appointment.specialty,
+      hospital: appointment.hospital,
+      date: appointment.date,
+      time: appointment.time,
+      reason: appointment.reason,
+    }).catch((error) => {
+      console.error("Appointment confirmation email delivery failed.");
+    });
+
     return res.status(201).json({
-      message: "Appointment created successfully",
+      message: "Appointment created successfully.",
       appointment,
     });
   } catch (error) {
-    console.error("Create appointment error:", error.message);
-
-    return res.status(500).json({
-      message: "Failed to create appointment",
-    });
+    return next(error);
   }
 }
 
-// PATCH: Cancel an appointment
-export async function cancelAppointment(req, res) {
+export async function cancelAppointment(req, res, next) {
   try {
-    const appointment = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { status: "Cancelled" },
-      { new: true, runValidators: true }
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid appointment ID." });
+    }
+
+    const appointment = await Appointment.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        userId: req.userId,
+        status: "Upcoming",
+      },
+      { $set: {
+        status: "Cancelled",
+        "reminders.$[reminder].status": "cancelled",
+        "reminders.$[reminder].inAppStatus": "cancelled",
+        "reminders.$[reminder].emailStatus": "cancelled",
+      } },
+      {
+        new: true,
+        runValidators: true,
+        arrayFilters: [{
+          "reminder.status": { $in: ["scheduled", "processing"] },
+          "reminder.emailStatus": "pending",
+        }],
+      }
     );
 
     if (!appointment) {
       return res.status(404).json({
-        message: "Appointment not found",
+        message: "Upcoming appointment not found.",
       });
     }
 
     return res.status(200).json({
-      message: "Appointment cancelled successfully",
+      message: "Appointment cancelled successfully.",
       appointment,
     });
   } catch (error) {
-    console.error("Cancel appointment error:", error.message);
-
-    return res.status(400).json({
-      message: "Unable to cancel appointment. Check the appointment ID.",
-    });
+    return next(error);
   }
 }

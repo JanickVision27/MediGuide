@@ -3,6 +3,33 @@ import rateLimit from "express-rate-limit";
 const WINDOW_MS = 60 * 1000;
 const MAX_AI_REQUESTS_PER_WINDOW = 10;
 
+/** Limit repeated credential attempts while allowing normal shared-IP usage. */
+export const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    message: "Too many sign-in attempts. Please wait 15 minutes and try again.",
+  },
+});
+
+export const passwordResetRequestRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many reset requests. Please wait 15 minutes and try again." },
+});
+
+export const passwordResetCompletionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many reset attempts. Please wait 15 minutes and try again." },
+});
+
 /** AI lookups call a paid API, so cap each client at 10 requests per minute. */
 export const aiLookupRateLimiter = rateLimit({
   windowMs: WINDOW_MS,

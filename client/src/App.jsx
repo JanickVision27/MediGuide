@@ -1,62 +1,58 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate
-} from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
-import Layout from "./components/layout/Layout.jsx";
-import Home from "./pages/Home.jsx";
-import Profile from "./pages/Profile.jsx";
-import Appointments from "./pages/Appointments.jsx";
-import Medicines from "./pages/Medicines.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-/**
- * Application router.
- *
- * Every route is nested under <Layout />, which owns the persistent sidebar and
- * renders the matched page through its <Outlet />. That means the navigation is
- * always on screen, on every page.
- *
- * Want a full-bleed page with no sidebar (e.g. a public marketing landing
- * page)? Add it as a sibling of the <Layout /> route:
- *
- *   <Route path="/welcome" element={<Home />} />
- */
+import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
+import PublicOnlyRoute from './components/auth/PublicOnlyRoute.jsx'
+import Layout from './components/layout/Layout.jsx'
+import PublicLayout from './components/layout/PublicLayout.jsx'
+import { AuthProvider } from './context/AuthContext.jsx'
+import Appointments from './pages/Appointments.jsx'
+import ChatUI from './pages/ChatUI.jsx'
+import Home from './pages/Home.jsx'
+import Hospitals from './pages/Hospitals.jsx'
+import Login from './pages/Login.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
+import Medicines from './pages/Medicines.jsx'
+import Prescriptions from './pages/Prescriptions.jsx'
+import Profile from './pages/Profile.jsx'
+import Register from './pages/Register.jsx'
+
+function publicAuthPage(element) {
+  return <PublicOnlyRoute>{element}</PublicOnlyRoute>
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Shared layout: sidebar and page content */}
-        <Route element={<Layout />}>
-          {/* Home page */}
-          <Route index element={<Home />} />
+      <AuthProvider>
+        <Routes>
+          <Route element={<PublicLayout />}>
+            <Route index element={<Home />} />
+            <Route path="login" element={publicAuthPage(<Login />)} />
+            <Route path="register" element={publicAuthPage(<Register />)} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
+          </Route>
 
-          {/* Patient profile page */}
-          <Route path="profile" element={<Profile />} />
-
-          {/* Healthcare pages */}
           <Route
-            path="appointments"
-            element={<Appointments />}
-          />
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="profile" element={<Profile />} />
+            <Route path="dashboard" element={<Navigate to="/appointments" replace />} />
+            <Route path="medicines" element={<Medicines />} />
+            <Route path="prescriptions" element={<Prescriptions />} />
+            <Route path="hospitals" element={<Hospitals />} />
+            <Route path="appointments" element={<Appointments />} />
+            <Route path="chat" element={<ChatUI />} />
+          </Route>
 
-          {/* Smart Medicine Lookup: search + AI prescription parsing */}
-          <Route path="medicines" element={<Medicines />} />
-
-          {/* Authentication pages */}
-          <Route path="login" element={<Login />} />
-
-          <Route path="register" element={<Register />} />
-
-          {/* Redirect unknown URLs to Home */}
-          <Route
-            path="*"
-            element={<Navigate to="/" replace />}
-          />
-        </Route>
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
-  );
+  )
 }

@@ -47,6 +47,13 @@ export function LogoMark({ className = 'h-9 w-9' }) {
   )
 }
 
+export const HomeIcon = (props) => (
+  <Icon {...props}>
+    <path d="M3 9.75 12 3l9 6.75V19.5A1.5 1.5 0 0 1 19.5 21h-15A1.5 1.5 0 0 1 3 19.5z" />
+    <path d="M9.25 21v-6.5h5.5V21" />
+  </Icon>
+)
+
 export const HospitalIcon = (props) => (
   <Icon {...props}>
     <path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V21" />

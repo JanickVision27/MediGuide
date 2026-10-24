@@ -1,4 +1,4 @@
-﻿import dns from 'node:dns';
+import dns from 'node:dns';
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 dns.setDefaultResultOrder('ipv4first');
 
@@ -45,7 +45,7 @@ async function seed() {
     console.log('Collection cleared');
 
     await Medicine.insertMany(medicines, { ordered: false });
-
+    
     const count = await Medicine.countDocuments();
     console.log(`Seeding complete. ${count} documents verified in database.`);
 

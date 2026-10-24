@@ -10,6 +10,16 @@ function getResendClient() {
   return resendClient;
 }
 
+function getRequiredMailFrom() {
+  const from = process.env.MAIL_FROM?.trim();
+  if (!from) {
+    throw new Error(
+      "MAIL_FROM is required for email notifications. Use a sender on your verified Resend domain."
+    );
+  }
+  return from;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => {
     const entities = {
@@ -51,25 +61,49 @@ function detailRow(label, value) {
   </tr>`;
 }
 
-export function getPasswordResetAppUrl() {
-  const configured = process.env.APP_URL?.trim();
-  if (!configured) return null;
+function normalizeAppUrl(value) {
   try {
-    const url = new URL(configured);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
-    return url.toString().replace(/\/$/, "");
+    const url = new URL(value);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username || url.password || url.search || url.hash
+    ) {
+      return null;
+    }
+    return url.toString().replace(/\/+$/, "");
   } catch {
     return null;
   }
 }
 
+export function getPasswordResetAppUrl() {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return normalizeAppUrl(configured);
+
+  // Most deployments already configure the frontend origin for CORS. Reuse it
+  // for email links instead of silently disabling delivery when APP_URL is absent.
+  const fallbackOrigins = (
+    process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || ""
+  ).split(",");
+  for (const origin of fallbackOrigins) {
+    const normalized = normalizeAppUrl(origin.trim());
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 export function isPasswordResetEmailConfigured() {
-  return Boolean(process.env.RESEND_API_KEY?.trim() && getPasswordResetAppUrl());
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() &&
+    process.env.MAIL_FROM?.trim() &&
+    getPasswordResetAppUrl()
+  );
 }
 
 export function getMissingPasswordResetEmailConfiguration() {
   const missing = [];
   if (!process.env.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
+  if (!process.env.MAIL_FROM?.trim()) missing.push("MAIL_FROM");
   if (!getPasswordResetAppUrl()) missing.push("APP_URL");
   return missing;
 }
@@ -91,7 +125,7 @@ export function safeEmailProviderFailure(error) {
 export async function sendPasswordResetEmail({ to, resetUrl, expiresInMinutes }) {
   const resend = getResendClient();
   if (!resend || !getPasswordResetAppUrl()) return { skipped: true };
-  const from = process.env.MAIL_FROM?.trim() || "onboarding@resend.dev";
+  const from = getRequiredMailFrom();
   const safeUrl = escapeHtml(resetUrl);
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide</h1><h2>Reset your password</h2><p>We received a request to reset the password for your MediGuide account. Use the button below within ${expiresInMinutes} minutes.</p><p><a href="${safeUrl}" style="display:inline-block;background:#1769aa;color:white;padding:12px 20px;border-radius:10px;text-decoration:none">Reset password</a></p><p>If you did not request this, you can ignore this email.</p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. Use synthetic information only.</p></div>`;
   const result = await resend.emails.send({
@@ -118,7 +152,11 @@ export async function sendPasswordResetEmail({ to, resetUrl, expiresInMinutes })
 }
 
 export function isAppointmentReminderEmailConfigured() {
-  return Boolean(process.env.RESEND_API_KEY?.trim() && getPasswordResetAppUrl());
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() &&
+    process.env.MAIL_FROM?.trim() &&
+    getPasswordResetAppUrl()
+  );
 }
 
 export async function sendAppointmentReminder({ to, appointment, offsetMinutes, idempotencyKey }) {
@@ -143,7 +181,7 @@ export async function sendAppointmentReminder({ to, appointment, offsetMinutes, 
   const appointmentsUrl = `${appUrl}/appointments`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide appointment reminder</h1><p>Your appointment is coming up in ${period}.</p><p><strong>${escapeHtml(appointment.doctor)}</strong>${appointment.specialty ? ` · ${escapeHtml(appointment.specialty)}` : ""}<br>${escapeHtml(formattedWhen)}<br>${escapeHtml(hospital)}${address ? `<br>${escapeHtml(address)}` : ""}</p><p><a href="${escapeHtml(appointmentsUrl)}">View your appointments</a></p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. This is not a clinical reminder service.</p></div>`;
   const result = await resend.emails.send({
-    from: process.env.MAIL_FROM?.trim() || "onboarding@resend.dev",
+    from: getRequiredMailFrom(),
     to,
     subject: "MediGuide appointment reminder",
     html,
@@ -167,8 +205,8 @@ export async function sendAppointmentReminder({ to, appointment, offsetMinutes, 
 
 /**
  * Sends a demo appointment-saved notification to the session-derived patient
- * email. Without RESEND_API_KEY, notifications are skipped without affecting
- * appointment creation or application startup.
+ * email. Delivery requires RESEND_API_KEY and a MAIL_FROM sender on a verified
+ * Resend domain. Missing keys skip delivery; failures never affect booking.
  */
 export async function sendAppointmentConfirmation({
   to,
@@ -183,7 +221,7 @@ export async function sendAppointmentConfirmation({
   const resend = getResendClient();
   if (!resend) return { skipped: true };
 
-  const from = process.env.MAIL_FROM?.trim() || "onboarding@resend.dev";
+  const from = getRequiredMailFrom();
   const formattedDate = displayDate(date);
   const formattedTime = displayTime(time);
   const hospitalLocation = hospital

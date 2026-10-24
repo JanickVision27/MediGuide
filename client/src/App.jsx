@@ -7,7 +7,7 @@ import PublicLayout from './components/layout/PublicLayout.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import Appointments from './pages/Appointments.jsx'
 import ChatUI from './pages/ChatUI.jsx'
-import Landing from './pages/Landing.jsx'
+import Home from './pages/Home.jsx'
 import Hospitals from './pages/Hospitals.jsx'
 import Login from './pages/Login.jsx'
 import ForgotPassword from './pages/ForgotPassword.jsx'
@@ -27,7 +27,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route element={<PublicLayout />}>
-            <Route index element={<Landing />} />
+            <Route index element={<Home />} />
             <Route path="login" element={publicAuthPage(<Login />)} />
             <Route path="register" element={publicAuthPage(<Register />)} />
             <Route path="forgot-password" element={<ForgotPassword />} />

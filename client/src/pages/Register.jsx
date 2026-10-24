@@ -3,11 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { LogoMark, ShieldCheckIcon, UserIcon } from '../components/icons.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
-import { PROFILE_PHOTO_ACCEPT, validateProfilePhoto } from '../utils/profilePhoto.js'
 
 export default function Register() {
   const navigate = useNavigate()
-  const { register, saveProfilePhoto } = useAuth()
+  const { register } = useAuth()
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -17,8 +16,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [profilePhoto, setProfilePhoto] = useState(null)
-  const [photoError, setPhotoError] = useState('')
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
@@ -44,32 +41,12 @@ export default function Register() {
         email: form.email.trim(),
         password: form.password,
       })
-      let profilePhotoWarning = ''
-      if (profilePhoto) {
-        try {
-          await saveProfilePhoto(profilePhoto)
-        } catch {
-          profilePhotoWarning =
-            'Your account was created, but the photo could not be saved. You can add it from your Profile.'
-        }
-      }
-      navigate('/profile', {
-        replace: true,
-        state: profilePhotoWarning ? { profilePhotoWarning } : undefined,
-      })
+      navigate('/profile', { replace: true })
     } catch (err) {
       setError(err.message || 'Unable to create your account right now.')
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  function selectProfilePhoto(event) {
-    const file = event.target.files?.[0] || null
-    const validationError = validateProfilePhoto(file)
-    setPhotoError(validationError)
-    setProfilePhoto(validationError ? null : file)
-    if (validationError) event.target.value = ''
   }
 
   return (
@@ -206,24 +183,6 @@ export default function Register() {
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                 />
               </div>
-              <div>
-                <label htmlFor="registration-photo" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Profile photo <span className="font-normal text-slate-500">(optional)</span>
-                </label>
-                <input
-                  id="registration-photo"
-                  type="file"
-                  accept={PROFILE_PHOTO_ACCEPT}
-                  onChange={selectProfilePhoto}
-                  disabled={isSubmitting}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:font-semibold file:text-brand-700"
-                  aria-describedby="registration-photo-help"
-                />
-                <p id="registration-photo-help" className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                  JPG, PNG, or WebP. Maximum size 2 MB.
-                </p>
-                {photoError && <p className="mt-1 text-sm text-rose-700" role="alert">{photoError}</p>}
-              </div>
               <button type="submit" disabled={isSubmitting} className="btn-primary mt-2 w-full py-3">
                 {isSubmitting ? 'Creating account…' : 'Create account'}
               </button>
@@ -234,9 +193,6 @@ export default function Register() {
               <Link to="/login" className="font-bold text-brand-700 hover:text-brand-800">
                 Sign in
               </Link>
-            </p>
-            <p className="mt-7 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-              Educational demo only. Do not use real medical information or sensitive personal details.
             </p>
           </div>
         </section>

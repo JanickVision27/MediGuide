@@ -19,7 +19,7 @@ export default function MobileHeader({ onMenuClick }) {
         <MenuIcon className="h-5 w-5" />
       </button>
 
-      <Link to="/appointments" className="flex items-center gap-2.5" aria-label="MediGuide appointments">
+      <Link to="/" className="flex items-center gap-2.5" aria-label="MediGuide home">
         <LogoMark className="h-8 w-8" />
         <span className="text-base font-bold tracking-tight text-slate-900">
           Medi<span className="text-brand-600">Guide</span>

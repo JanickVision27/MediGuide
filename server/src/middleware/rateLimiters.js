@@ -3,12 +3,19 @@ import rateLimit from "express-rate-limit";
 const WINDOW_MS = 60 * 1000;
 const MAX_AI_REQUESTS_PER_WINDOW = 10;
 
+// Note: no custom `keyGenerator` on purpose. express-rate-limit v8 reads req.ip,
+// and app.js enables "trust proxy", so the counted IP is the real visitor behind
+// Render/Vercel instead of the proxy's address (the old behaviour bucketed every
+// visitor together and caused spurious 429s during registration).
+
 /** Limit repeated credential attempts while allowing normal shared-IP usage. */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  // Only failed sign-up/sign-in attempts count towards the limit.
+  skipSuccessfulRequests: true,
   message: {
     message: "Too many sign-in attempts. Please wait 15 minutes and try again.",
   },
@@ -19,6 +26,7 @@ export const passwordResetRequestRateLimiter = rateLimit({
   limit: 5,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { message: "Too many reset requests. Please wait 15 minutes and try again." },
 });
 

@@ -45,11 +45,38 @@ export function validateSessionConfiguration() {
   getSessionSecret();
 }
 
+// "SameSite=Lax" cookies are NOT sent on cross-site fetches, so a frontend on
+// vercel.app talking to an API on onrender.com would register successfully and
+// then immediately lose its session. The client proxies /api through its own
+// origin (see client/vercel.json), which keeps the cookie first-party. When a
+// deployment still calls the API cross-origin, set SESSION_COOKIE_SAME_SITE=none
+// (or cross-site) so the browser accepts and returns the cookie.
+function getSameSiteSetting() {
+  const configured = process.env.SESSION_COOKIE_SAME_SITE?.trim().toLowerCase();
+
+  if (!configured) {
+    return { sameSite: "lax", crossSite: false };
+  }
+
+  if (["none", "cross-site", "crosssite"].includes(configured)) {
+    return { sameSite: "none", crossSite: true };
+  }
+
+  if (configured === "strict") {
+    return { sameSite: "strict", crossSite: false };
+  }
+
+  return { sameSite: "lax", crossSite: false };
+}
+
 export function getCookieOptions() {
+  const { sameSite, crossSite } = getSameSiteSetting();
+
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    // Browsers reject SameSite=None without Secure, even over plain HTTP.
+    secure: crossSite || process.env.NODE_ENV === "production",
+    sameSite,
     path: "/",
   };
 }

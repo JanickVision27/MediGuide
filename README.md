@@ -64,14 +64,30 @@ Nominatim's usage policy.
 
 #### Optional email notifications and password reset
 
-To email registered users, first add and verify your domain in the Resend dashboard and complete
-its DNS verification. Then configure the **root `.env`**, not the frontend environment:
+Email is sent over an HTTPS API because hosts such as Render block outbound SMTP ports.
+Pick a provider with `EMAIL_PROVIDER` and configure the **root `.env`** (not the frontend
+environment):
 
 ```dotenv
+# Brevo: no domain needed - verify one sender address (a Gmail address is fine)
+EMAIL_PROVIDER=brevo
+BREVO_API_KEY=xkeysib_your_actual_key
+MAIL_FROM="MediGuide <your-verified-sender@gmail.com>"
+APP_URL=http://localhost:5173
+```
+
+```dotenv
+# Resend: requires a domain verified in the Resend dashboard
+EMAIL_PROVIDER=resend
 RESEND_API_KEY=re_your_actual_key
 MAIL_FROM="MediGuide <appointments@your-verified-domain.com>"
 APP_URL=http://localhost:5173
 ```
+
+Resend's shared `onboarding@resend.dev` sender only delivers to the Resend account owner's address.
+`GET /api/health/email` reports the active provider, whether a key is present, and the parsed
+sender address (never the key itself). Misconfiguration is logged as a warning at startup and on
+every skipped send; nothing fails silently.
 
 Replace the placeholders with your own values. `MAIL_FROM` must be a sender on the verified domain;
 it cannot be an arbitrary user's email address. `APP_URL` is the public frontend origin used in
@@ -195,6 +211,7 @@ attribution and the fictional-provider/non-affiliation disclaimers remain visibl
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
 | `GET /api/doctors` | List/filter active synthetic doctors |
 | `GET /api/medicines` | Search/filter medicines by `search`, `letter`, and `category` |
+| `GET /api/health/email` | Report the active email provider, key presence and parsed sender (no secrets) |
 
 ## Project structure
 
@@ -234,7 +251,7 @@ server/src/
   signatures rather than trusting the browser's declared file type.
 - Appointment reads and writes are scoped by the verified server-side session.
 - Hospital search/photo endpoints are rate-limited; Google keys remain on the server.
-- Resend keys and patient recipient addresses are used only by the server; notification content
+- Email provider keys (Resend or Brevo) and patient recipient addresses are used only by the server; notification content
   is HTML-escaped and recipients come from the authenticated account, not the booking request.
 - Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN` and `APP_URL`, and use HTTPS in production.
 - This remains an educational demo, not a production healthcare or PHI-storage solution.

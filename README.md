@@ -128,8 +128,31 @@ cd server
 npm test
 ```
 
-The tests cover password-reset token behavior, reminder scheduling, model registration, and safe
-email configuration/diagnostics without requiring a live MongoDB connection or sending real email.
+The tests cover password-reset token behavior, reminder scheduling, model registration, CORS
+origin handling and session-cookie policy, and safe email configuration/diagnostics without
+requiring a live MongoDB connection or sending real email.
+
+## Deployment (Vercel frontend + Render API)
+
+The frontend is deployed to Vercel and the API to Render. The browser never calls Render
+directly: it requests `/api/...` on its own origin, and `client/vercel.json` rewrites that path
+to the Render service. Same-origin requests mean no CORS preflight, no third-party cookie and no
+mixed-content failures.
+
+| Setting | Frontend (Vercel) | API (Render) |
+| --- | --- | --- |
+| Root directory | `client` | `server` |
+| Build command | `npm run build` | `npm ci` |
+| Start command | (static) | `npm start` |
+| Health check | - | `/api/health` |
+
+Required API environment variables: `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET` (32+ chars).
+Recommended: `CLIENT_ORIGIN=https://medi-guide-care.vercel.app` and
+`APP_URL=https://medi-guide-care.vercel.app`. Leave `VITE_API_URL` unset on Vercel - the
+production build uses the relative `/api` base on purpose.
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full checklist, the request flow diagram and a
+troubleshooting table for "Failed to fetch", blank pages and login-not-sticking issues.
 
 ## Main routes
 
@@ -197,7 +220,14 @@ server/src/
 
 - Passwords are hashed with bcrypt and are never returned by the API. Reset tokens are random,
   hashed at rest, expire after 30 minutes, and are cleared after successful use.
-- Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production.
+- Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production. Cross-site
+  deployments can opt into `SameSite=None` (always paired with `Secure`) via
+  `SESSION_COOKIE_SAME_SITE=none`, but the same-origin `/api` proxy is preferred.
+- CORS only echoes back explicitly allowed origins (the deployed Vercel app, its preview
+  deployments and localhost, plus anything in `CLIENT_ORIGIN`/`CLIENT_ORIGIN_PATTERNS`);
+  credentials are never combined with a `*` wildcard.
+- `app.set("trust proxy", ...)` is enabled so rate limits are applied per real visitor IP behind
+  the Render/Vercel proxies instead of one shared bucket.
 - Authentication and password-reset requests are rate-limited; login/reset-request responses do
   not reveal whether an account exists.
 - Profile-photo uploads are session-scoped, limited to 2 MB, and checked against JPG/PNG/WebP

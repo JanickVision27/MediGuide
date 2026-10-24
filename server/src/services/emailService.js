@@ -1,23 +1,389 @@
 import { Resend } from "resend";
 import { appointmentDateTimeToUtc } from "./appointmentReminders.js";
 
-let resendClient;
+/**
+ * Transactional email transport with two HTTPS providers.
+ *
+ * Render's free web services block outbound SMTP ports (25/465/587), so only
+ * HTTPS email APIs can deliver from production:
+ *
+ *   EMAIL_PROVIDER=resend  -> Resend API (default)
+ *   EMAIL_PROVIDER=brevo   -> POST https://api.brevo.com/v3/smtp/email
+ *
+ * Brevo is the "no domain" option: verifying a single sender address (a Gmail
+ * address is fine) is enough to email any recipient, whereas Resend's shared
+ * `onboarding@resend.dev` sender only reaches the Resend account owner.
+ *
+ * All templates stay provider agnostic; only sendEmail() talks to a provider.
+ * Public senders keep their existing signatures and return values:
+ * `{ accepted: true }`, `{ skipped: true, reason }`, or a thrown error.
+ */
 
-function getResendClient() {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) return null;
-  if (!resendClient) resendClient = new Resend(apiKey);
+const SUPPORTED_EMAIL_PROVIDERS = Object.freeze(["resend", "brevo"]);
+const DEFAULT_EMAIL_PROVIDER = "resend";
+const PROVIDER_KEY_NAMES = Object.freeze({
+  resend: "RESEND_API_KEY",
+  brevo: "BREVO_API_KEY",
+});
+const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+const BREVO_TIMEOUT_MS = 15_000;
+const SANDBOX_SENDER_DOMAIN = "resend.dev";
+const LOG_PREFIX = "[email]";
+
+let resendClient;
+let resendClientKey;
+
+function readEnv(name) {
+  return process.env[name]?.trim() ?? "";
+}
+
+function getConfiguredProviderName() {
+  return (readEnv("EMAIL_PROVIDER") || DEFAULT_EMAIL_PROVIDER).toLowerCase();
+}
+
+/** The provider used for sends; unknown values fall back to Resend. */
+export function getEmailProvider() {
+  const configured = getConfiguredProviderName();
+  return SUPPORTED_EMAIL_PROVIDERS.includes(configured) ? configured : DEFAULT_EMAIL_PROVIDER;
+}
+
+export function isSupportedEmailProvider() {
+  return SUPPORTED_EMAIL_PROVIDERS.includes(getConfiguredProviderName());
+}
+
+/**
+ * Parse MAIL_FROM into { name, email }.
+ * Accepts `MediGuide <appointments@example.com>`, `"MediGuide" <appointments@example.com>`
+ * and a bare `appointments@example.com`. Surrounding quotes are stripped because
+ * dashboards often paste `MAIL_FROM="Name <mail@host>"` verbatim.
+ */
+export function parseMailFrom(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/^["'`]|["'`]$/g, "")
+    .trim();
+  if (!raw) return { name: "", email: "" };
+
+  const angleMatch = raw.match(/^(.*?)<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
+  if (angleMatch) {
+    return {
+      name: angleMatch[1].trim().replace(/^["'`]|["'`]$/g, "").trim(),
+      email: angleMatch[2].trim().toLowerCase(),
+    };
+  }
+
+  if (/^[^\s@]+@[^\s@]+$/.test(raw)) {
+    return { name: "", email: raw.toLowerCase() };
+  }
+
+  return { name: "", email: "" };
+}
+
+function formatMailFrom({ name, email }) {
+  return name ? `${name} <${email}>` : email;
+}
+
+/**
+ * Single source of truth for email configuration.
+ * Never includes the API key itself, only whether one exists.
+ */
+export function getEmailConfiguration() {
+  const providerName = getConfiguredProviderName();
+  const providerSupported = SUPPORTED_EMAIL_PROVIDERS.includes(providerName);
+  const provider = providerSupported ? providerName : DEFAULT_EMAIL_PROVIDER;
+  const apiKeyName = PROVIDER_KEY_NAMES[provider];
+  const apiKeyConfigured = Boolean(readEnv(apiKeyName));
+  const sender = parseMailFrom(readEnv("MAIL_FROM"));
+  const senderDomain = sender.email.split("@")[1] ?? "";
+  const sandboxSender = senderDomain === SANDBOX_SENDER_DOMAIN;
+  const appUrl = getPasswordResetAppUrl();
+
+  const missing = [];
+  if (!providerSupported) missing.push("EMAIL_PROVIDER");
+  if (!apiKeyConfigured) missing.push(apiKeyName);
+  if (!sender.email) missing.push("MAIL_FROM");
+
+  return {
+    provider,
+    providerSupported,
+    configuredProvider: providerName,
+    apiKeyName,
+    apiKeyConfigured,
+    senderEmail: sender.email,
+    senderName: sender.name,
+    senderDomain,
+    sandboxSender,
+    // Configuration-level check only (no provider API call): the sender parses
+    // and credentials exist. A Resend sandbox sender cannot be used with Brevo.
+    senderVerified:
+      Boolean(sender.email) && apiKeyConfigured && !(sandboxSender && provider === "brevo"),
+    appUrl,
+    missing,
+    configured: missing.length === 0,
+  };
+}
+
+/** Safe health payload: booleans plus the sender address, never the API key. */
+export function getEmailHealth() {
+  const config = getEmailConfiguration();
+
+  return {
+    provider: config.provider,
+    apiKeyConfigured: config.apiKeyConfigured,
+    senderEmail: config.senderEmail,
+    senderVerified: config.senderVerified,
+    // Extra diagnostics that are safe to expose (no secrets).
+    senderName: config.senderName,
+    senderDomain: config.senderDomain,
+    sandboxSender: config.sandboxSender,
+    appUrlConfigured: Boolean(config.appUrl),
+    missingConfiguration: config.missing,
+  };
+}
+
+/** Startup diagnostics so misconfiguration is never silent. */
+export function logEmailConfiguration() {
+  const config = getEmailConfiguration();
+
+  if (!config.providerSupported) {
+    console.warn(
+      `${LOG_PREFIX} WARNING EMAIL_PROVIDER="${config.configuredProvider}" is not supported ` +
+        `(expected resend or brevo); falling back to "${DEFAULT_EMAIL_PROVIDER}".`
+    );
+  }
+
+  if (!config.apiKeyConfigured) {
+    console.warn(
+      `${LOG_PREFIX} WARNING ${config.apiKeyName} is not set for provider "${config.provider}". ` +
+        "Email delivery will be skipped; API keys are read from the environment only."
+    );
+  }
+
+  if (!config.senderEmail) {
+    console.warn(
+      `${LOG_PREFIX} WARNING MAIL_FROM is missing or could not be parsed. ` +
+        'Use the form "MediGuide <appointments@example.com>".'
+    );
+  }
+
+  if (config.sandboxSender && config.provider === "brevo") {
+    console.warn(
+      `${LOG_PREFIX} WARNING sender domain "${SANDBOX_SENDER_DOMAIN}" is Resend's sandbox and ` +
+        "does not work with Brevo. Set MAIL_FROM to the sender verified in Brevo."
+    );
+  }
+
+  if (!config.appUrl) {
+    console.warn(
+      `${LOG_PREFIX} WARNING APP_URL (or CLIENT_ORIGIN / CLIENT_URL) is missing; ` +
+        "password-reset and appointment-reminder emails will be skipped."
+    );
+  }
+
+  if (config.configured) {
+    const sender = formatMailFrom({ name: config.senderName, email: config.senderEmail });
+    console.info(
+      `${LOG_PREFIX} provider=${config.provider} apiKey=${config.apiKeyName} present=true ` +
+        `sender="${sender}" appUrl=${config.appUrl ?? "(none)"}`
+    );
+  } else {
+    console.warn(
+      `${LOG_PREFIX} WARNING email delivery is NOT configured. missing=` +
+        `${[...config.missing, ...(config.appUrl ? [] : ["APP_URL"])].join(", ")}`
+    );
+  }
+}
+
+function getResendClient(apiKey) {
+  if (!resendClient || resendClientKey !== apiKey) {
+    resendClient = new Resend(apiKey);
+    resendClientKey = apiKey;
+  }
   return resendClient;
 }
 
-function getRequiredMailFrom() {
-  const from = process.env.MAIL_FROM?.trim();
-  if (!from) {
-    throw new Error(
-      "MAIL_FROM is required for email notifications. Use a sender on your verified Resend domain."
+function truncate(value, maxLength = 600) {
+  const text = String(value ?? "");
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+async function sendViaResend({ apiKey, sender, to, subject, html, text, idempotencyKey, replyTo }) {
+  const client = getResendClient(apiKey);
+  const payload = {
+    from: formatMailFrom(sender),
+    to,
+    subject,
+    html,
+    text,
+  };
+  if (replyTo) payload.replyTo = replyTo;
+
+  // The Resend SDK reports many API failures in its resolved result instead of
+  // throwing, so both shapes are converted into real errors.
+  const result = idempotencyKey
+    ? await client.emails.send(payload, { idempotencyKey })
+    : await client.emails.send(payload);
+
+  if (result?.error) {
+    const error = new Error("Resend rejected the email.");
+    Object.assign(
+      error,
+      safeEmailProviderFailure({
+        providerCode: result.error.name || result.error.code,
+        providerStatusCode: result.error.statusCode,
+      }),
+      { providerResponseBody: truncate(JSON.stringify(result.error)) }
     );
+    throw error;
   }
-  return from;
+  if (!result?.data?.id) {
+    const error = new Error("Resend acceptance could not be confirmed.");
+    error.providerCode = "acceptance_unconfirmed";
+    throw error;
+  }
+  return { id: result.data.id };
+}
+
+async function sendViaBrevo({ apiKey, sender, to, toName, subject, html, text, replyTo }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(BREVO_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "api-key": apiKey,
+      },
+      body: JSON.stringify({
+        sender: {
+          name: sender.name || "MediGuide",
+          email: sender.email,
+        },
+        to: [{ email: to, ...(toName ? { name: toName } : {}) }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+        ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      }),
+      signal: controller.signal,
+    });
+
+    const rawBody = await response.text();
+    let parsedBody = null;
+    try {
+      parsedBody = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      parsedBody = null;
+    }
+
+    if (!response.ok) {
+      const error = new Error(`Brevo rejected the email (HTTP ${response.status}).`);
+      Object.assign(error, {
+        providerCode:
+          parsedBody?.code || (response.status >= 500 ? "provider_unavailable" : "provider_error"),
+        providerStatusCode: response.status,
+        // Logged only; callers surface a bounded code via safeEmailProviderFailure().
+        providerResponseBody: truncate(rawBody || response.statusText),
+      });
+      throw error;
+    }
+
+    return { id: parsedBody?.messageId ?? "" };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(`Brevo request timed out after ${BREVO_TIMEOUT_MS}ms.`);
+      timeoutError.providerCode = "provider_timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Send one transactional email through the configured provider.
+ *
+ * Resolves with `{ accepted: true, provider, id }`, or `{ skipped: true, reason }`
+ * when the deployment is misconfigured (always logged as a WARNING — nothing is
+ * ever skipped silently). A provider rejection throws an error carrying
+ * `providerCode` / `providerStatusCode`.
+ */
+export async function sendEmail({
+  to,
+  toName = "",
+  subject,
+  html,
+  text,
+  idempotencyKey,
+  replyTo,
+} = {}) {
+  const config = getEmailConfiguration();
+  const recipient = String(to ?? "").trim();
+
+  if (!config.providerSupported) {
+    console.warn(
+      `${LOG_PREFIX} WARNING skipped "${subject}": unsupported EMAIL_PROVIDER ` +
+        `"${config.configuredProvider}".`
+    );
+    return { skipped: true, reason: "unsupported_provider" };
+  }
+
+  if (!config.apiKeyConfigured) {
+    console.warn(
+      `${LOG_PREFIX} WARNING skipped "${subject}": ${config.apiKeyName} is not set ` +
+        `for provider "${config.provider}".`
+    );
+    return { skipped: true, reason: `missing_${config.apiKeyName}` };
+  }
+
+  if (!config.senderEmail) {
+    console.warn(
+      `${LOG_PREFIX} WARNING skipped "${subject}": MAIL_FROM is missing or could not be parsed.`
+    );
+    return { skipped: true, reason: "missing_MAIL_FROM" };
+  }
+
+  if (!recipient) {
+    console.warn(`${LOG_PREFIX} WARNING skipped "${subject}": no recipient address was provided.`);
+    return { skipped: true, reason: "missing_recipient" };
+  }
+
+  const sender = { name: config.senderName, email: config.senderEmail };
+  const apiKey = readEnv(config.apiKeyName);
+
+  try {
+    const result =
+      config.provider === "brevo"
+        ? await sendViaBrevo({ apiKey, sender, to: recipient, toName, subject, html, text, replyTo })
+        : await sendViaResend({
+            apiKey,
+            sender,
+            to: recipient,
+            subject,
+            html,
+            text,
+            idempotencyKey,
+            replyTo,
+          });
+
+    console.info(
+      `${LOG_PREFIX} provider=${config.provider} accepted to="${recipient}" subject="${subject}"` +
+        (result.id ? ` id=${result.id}` : "")
+    );
+    return { accepted: true, provider: config.provider, id: result.id };
+  } catch (error) {
+    const details = safeEmailProviderFailure(error);
+    console.error(
+      `${LOG_PREFIX} provider=${config.provider} FAILED to="${recipient}" subject="${subject}" ` +
+        `code=${details.providerCode}` +
+        (details.providerStatusCode ? ` status=${details.providerStatusCode}` : "") +
+        ` body=${error?.providerResponseBody ?? truncate(error?.message)}`
+    );
+    throw error;
+  }
 }
 
 function escapeHtml(value) {
@@ -92,19 +458,19 @@ export function getPasswordResetAppUrl() {
   return null;
 }
 
+/** True when the active provider has credentials plus a parseable sender. */
+export function isEmailDeliveryConfigured() {
+  return getEmailConfiguration().configured;
+}
+
 export function isPasswordResetEmailConfigured() {
-  return Boolean(
-    process.env.RESEND_API_KEY?.trim() &&
-    process.env.MAIL_FROM?.trim() &&
-    getPasswordResetAppUrl()
-  );
+  return isEmailDeliveryConfigured() && Boolean(getPasswordResetAppUrl());
 }
 
 export function getMissingPasswordResetEmailConfiguration() {
-  const missing = [];
-  if (!process.env.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
-  if (!process.env.MAIL_FROM?.trim()) missing.push("MAIL_FROM");
-  if (!getPasswordResetAppUrl()) missing.push("APP_URL");
+  const config = getEmailConfiguration();
+  const missing = [...config.missing];
+  if (!config.appUrl) missing.push("APP_URL");
   return missing;
 }
 
@@ -123,46 +489,35 @@ export function safeEmailProviderFailure(error) {
 }
 
 export async function sendPasswordResetEmail({ to, resetUrl, expiresInMinutes }) {
-  const resend = getResendClient();
-  if (!resend || !getPasswordResetAppUrl()) return { skipped: true };
-  const from = getRequiredMailFrom();
+  const appUrl = getPasswordResetAppUrl();
+  if (!appUrl) {
+    console.warn(
+      `${LOG_PREFIX} WARNING password reset email skipped: APP_URL (or CLIENT_ORIGIN / CLIENT_URL) is not configured.`
+    );
+    return { skipped: true, reason: "missing_APP_URL" };
+  }
   const safeUrl = escapeHtml(resetUrl);
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide</h1><h2>Reset your password</h2><p>We received a request to reset the password for your MediGuide account. Use the button below within ${expiresInMinutes} minutes.</p><p><a href="${safeUrl}" style="display:inline-block;background:#1769aa;color:white;padding:12px 20px;border-radius:10px;text-decoration:none">Reset password</a></p><p>If you did not request this, you can ignore this email.</p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. Use synthetic information only.</p></div>`;
-  const result = await resend.emails.send({
-    from,
+  return sendEmail({
     to,
     subject: "Reset your MediGuide password",
     html,
     text: `Reset your MediGuide password within ${expiresInMinutes} minutes: ${resetUrl}\n\nIf you did not request this, ignore this email.`,
   });
-  if (result.error) {
-    const error = new Error("Resend rejected the password reset email.");
-    Object.assign(error, safeEmailProviderFailure({
-      providerCode: result.error.name || result.error.code,
-      providerStatusCode: result.error.statusCode,
-    }));
-    throw error;
-  }
-  if (!result.data?.id) {
-    const error = new Error("Resend acceptance could not be confirmed.");
-    error.providerCode = "acceptance_unconfirmed";
-    throw error;
-  }
-  return { accepted: true };
 }
 
 export function isAppointmentReminderEmailConfigured() {
-  return Boolean(
-    process.env.RESEND_API_KEY?.trim() &&
-    process.env.MAIL_FROM?.trim() &&
-    getPasswordResetAppUrl()
-  );
+  return isEmailDeliveryConfigured() && Boolean(getPasswordResetAppUrl());
 }
 
 export async function sendAppointmentReminder({ to, appointment, offsetMinutes, idempotencyKey }) {
-  const resend = getResendClient();
   const appUrl = getPasswordResetAppUrl();
-  if (!resend || !appUrl) return { skipped: true };
+  if (!appUrl) {
+    console.warn(
+      `${LOG_PREFIX} WARNING appointment reminder skipped: APP_URL (or CLIENT_ORIGIN / CLIENT_URL) is not configured.`
+    );
+    return { skipped: true, reason: "missing_APP_URL" };
+  }
   const startsAt = appointmentDateTimeToUtc(appointment.date, appointment.time, appointment.timeZone);
   const formattedWhen = new Intl.DateTimeFormat("en-IN", {
     dateStyle: "full",
@@ -180,27 +535,13 @@ export async function sendAppointmentReminder({ to, appointment, offsetMinutes, 
       : `${offsetMinutes} minutes`;
   const appointmentsUrl = `${appUrl}/appointments`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;border:1px solid #dbe4ef;border-radius:16px;color:#142b4a"><h1 style="color:#1769aa">MediGuide appointment reminder</h1><p>Your appointment is coming up in ${period}.</p><p><strong>${escapeHtml(appointment.doctor)}</strong>${appointment.specialty ? ` · ${escapeHtml(appointment.specialty)}` : ""}<br>${escapeHtml(formattedWhen)}<br>${escapeHtml(hospital)}${address ? `<br>${escapeHtml(address)}` : ""}</p><p><a href="${escapeHtml(appointmentsUrl)}">View your appointments</a></p><p style="font-size:12px;color:#64748b">MediGuide is an educational demo. This is not a clinical reminder service.</p></div>`;
-  const result = await resend.emails.send({
-    from: getRequiredMailFrom(),
+  return sendEmail({
     to,
     subject: "MediGuide appointment reminder",
     html,
     text: `Your appointment is coming up in ${period}.\n${appointment.doctor}${appointment.specialty ? ` · ${appointment.specialty}` : ""}\n${formattedWhen}\n${hospital}${address ? `, ${address}` : ""}\nView your appointments: ${appointmentsUrl}\n\nMediGuide is an educational demo, not a clinical reminder service.`,
-  }, { idempotencyKey });
-  if (result.error) {
-    const error = new Error("Resend rejected the appointment reminder.");
-    Object.assign(error, safeEmailProviderFailure({
-      providerCode: result.error.name || result.error.code,
-      providerStatusCode: result.error.statusCode,
-    }));
-    throw error;
-  }
-  if (!result.data?.id) {
-    const error = new Error("Resend acceptance could not be confirmed.");
-    error.providerCode = "acceptance_unconfirmed";
-    throw error;
-  }
-  return { accepted: true };
+    idempotencyKey,
+  });
 }
 
 /**
@@ -218,10 +559,6 @@ export async function sendAppointmentConfirmation({
   time,
   reason,
 }) {
-  const resend = getResendClient();
-  if (!resend) return { skipped: true };
-
-  const from = getRequiredMailFrom();
   const formattedDate = displayDate(date);
   const formattedTime = displayTime(time);
   const hospitalLocation = hospital
@@ -303,19 +640,11 @@ export async function sendAppointmentConfirmation({
     "Educational demo only. This is not a real doctor or hospital appointment confirmation.",
   ].filter((line) => line !== "").join("\n");
 
-  const result = await resend.emails.send({
-    from,
+  return sendEmail({
     to,
+    toName: patientName,
     subject: "Appointment Saved – MediGuide Demo",
     html,
     text,
   });
-
-  // The Resend SDK reports many API failures in its resolved result instead of
-  // throwing. Convert those to errors so the controller's catch handler logs them.
-  if (result.error) {
-    throw new Error(result.error.message || "Resend could not send the notification.");
-  }
-
-  return result;
 }

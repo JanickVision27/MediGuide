@@ -1,4 +1,8 @@
-export const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+const defaultApiBase = import.meta.env.DEV
+  ? '/api'
+  : 'https://mediguide-0a1e.onrender.com/api'
+
+export const API_BASE = (import.meta.env.VITE_API_URL || defaultApiBase).replace(/\/$/, '')
 
 async function request(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData

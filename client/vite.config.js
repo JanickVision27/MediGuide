@@ -14,7 +14,7 @@ export default defineConfig({
     // browser on relative URLs (never call localhost from browser code).
     proxy: {
       '/api': {
-        target: 'http://localhost:5000', // Pointed to your Node backend port
+        target: 'https://mediguide-0a1e.onrender.com', // Pointed to your Node backend port
         changeOrigin: true,
       },
     },

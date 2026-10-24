@@ -79,6 +79,56 @@ Note: on Render's free plan the service sleeps after inactivity. The first reque
    - `https://medi-guide-care.vercel.app/api/health` returns the API JSON, proving the proxy
    - registering an account logs you in and `/profile` stays loaded after a refresh
 
+## 2b. Transactional email (Brevo or Resend)
+
+Render's free web services block outbound SMTP (ports 25/465/587), so **only HTTPS email APIs
+work in production**. The API supports two, selected with `EMAIL_PROVIDER`:
+
+| `EMAIL_PROVIDER` | Key variable | Needs a domain? | Notes |
+| --- | --- | --- | --- |
+| `brevo` (recommended for demos) | `BREVO_API_KEY` (`xkeysib-...`) | **No** — verify a single sender address | 300 emails/day free, HTTPS on port 443 |
+| `resend` (default) | `RESEND_API_KEY` (`re_...`) | Yes, a verified domain | `onboarding@resend.dev` only emails the Resend account owner |
+
+### Brevo setup (no domain purchase)
+
+1. Create a free Brevo account, then **Senders, Domains & IPs → Senders → Add Sender** and enter
+   the Gmail address you want to send from. Click the verification link Brevo emails you.
+2. **SMTP & API → API Keys → Create a new API key** (starts with `xkeysib-`).
+3. On Render add:
+
+   ```
+   EMAIL_PROVIDER = brevo
+   BREVO_API_KEY  = xkeysib-...
+   MAIL_FROM      = MediGuide <vickyvenkata295@gmail.com>   # the verified sender, no quotes
+   APP_URL        = https://medi-guide-care.vercel.app
+   ```
+
+4. Redeploy and check the boot log — it must show:
+
+   ```
+   [email] provider=brevo apiKey=BREVO_API_KEY present=true sender="MediGuide <...>" appUrl=https://...
+   ```
+
+5. Verify configuration at any time (no secrets are exposed):
+
+   ```bash
+   curl -s https://mediguide-care.vercel.app/api/health/email
+   # {"provider":"brevo","apiKeyConfigured":true,"senderEmail":"...","senderVerified":true,...}
+   ```
+
+### Behaviour and troubleshooting
+
+- When email is misconfigured, sends are **skipped with a WARNING** in the logs (never silent) and
+  the API keeps working: `missing_BREVO_API_KEY`, `missing_MAIL_FROM`, `missing_APP_URL`.
+- Provider rejections are logged with the HTTP status and response body and rethrown, e.g.
+  `[email] provider=brevo FAILED to="..." status=401 code=unauthorized body={...}`.
+- `MAIL_FROM` may be `Name <mail@host>` or a bare address; surrounding quotes are stripped.
+- Reminder emails also need `APP_URL` (used for the "View your appointments" link).
+- Startup warns if `MAIL_FROM` still uses Resend's `resend.dev` sandbox while
+  `EMAIL_PROVIDER=brevo`, since that combination cannot deliver.
+- Switching back to Resend later needs no code change: set `EMAIL_PROVIDER=resend` and a
+  `MAIL_FROM` on your verified domain.
+
 ## 3. Troubleshooting "Failed to fetch"
 
 `fetch` only throws that error when **no HTTP response is readable**. Work down this list:
@@ -92,6 +142,7 @@ Note: on Render's free plan the service sleeps after inactivity. The first reque
 | Vercel 404 for `/api/health` | Proxy rewrite missing / wrong API host | `client/vercel.json` |
 | First request after idling fails or hangs ~50 s | Render free-tier cold start | Retry automatically (already implemented) or upgrade the plan |
 | `429 Too many sign-in attempts` | Rate limiter keyed on the proxy IP | `app.set("trust proxy", 1)` (committed) plus a 20-attempt budget for failed attempts only |
+| Emails arrive locally but never from Render | Missing `EMAIL_PROVIDER`/`BREVO_API_KEY`/`MAIL_FROM` on Render, or SMTP credentials used on a host that blocks SMTP | Use Brevo/Resend over HTTPS (see 2b), then check `/api/health/email` |
 | Registers, then immediately bounces to `/login` | Session cookie dropped as a third-party/`SameSite=Lax` cookie | Use the `/api` proxy, or set `SESSION_COOKIE_SAME_SITE=none` on Render |
 
 Useful checks:

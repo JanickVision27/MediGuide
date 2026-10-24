@@ -15,6 +15,7 @@ import doctorRoutes from "./routes/doctorRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import medicineRoutes from "./routes/medicineRoutes.js";
 import { allowedOrigins, corsMiddleware } from "./middleware/cors.js";
+import { getEmailHealth, logEmailConfiguration } from "./services/emailService.js";
 import { listAllowedOrigins } from "./utils/corsOrigins.js";
 import { validateSessionConfiguration } from "./utils/session.js";
 import { startAppointmentReminderScheduler } from "./services/appointmentReminderScheduler.js";
@@ -78,6 +79,12 @@ function healthCheck(_req, res) {
 
 app.get(["/health", "/api/health"], healthCheck);
 
+// Email configuration diagnostics. Exposes booleans and the sender address only;
+// API keys are never returned.
+app.get(["/health/email", "/api/health/email"], (_req, res) => {
+  return res.status(200).json(getEmailHealth());
+});
+
 // Handle unknown API endpoints
 app.use("/api", (_req, res) => {
   return res.status(404).json({
@@ -139,6 +146,10 @@ export async function startServer() {
 
   // Validate authentication/session configuration.
   validateSessionConfiguration();
+
+  // Report the active email provider and any missing variables on boot, so a
+  // misconfigured deployment can never silently drop notifications.
+  logEmailConfiguration();
 
   console.log(
     `CORS allow-list: ${listAllowedOrigins(allowedOrigins).join(", ") || "(none)"}` +

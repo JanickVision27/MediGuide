@@ -54,7 +54,7 @@ export default function Sidebar({ open = false, onClose }) {
         }`}
       >
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-5">
-          <Link to="/appointments" className="flex flex-1 items-center gap-3 rounded-lg" aria-label="MediGuide appointments">
+          <Link to="/" className="flex flex-1 items-center gap-3 rounded-lg" aria-label="MediGuide home">
             <LogoMark className="h-10 w-10 shrink-0" />
             <span className="min-w-0">
               <span className="block truncate text-lg font-extrabold leading-tight tracking-tight text-slate-900">

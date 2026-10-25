@@ -166,11 +166,15 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["Upcoming", "Completed", "Cancelled"],
       default: "Upcoming",
     },
+    // Set when the lifecycle sweep promotes a finished appointment to Completed.
+    completedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
 appointmentSchema.index({ userId: 1, date: 1, time: 1 });
 appointmentSchema.index({ status: 1, "reminders.status": 1, "reminders.scheduledAt": 1 });
+// Supports the completion sweep (status + date) and per-user lookups.
+appointmentSchema.index({ status: 1, date: 1 });
 
 export default mongoose.model("Appointment", appointmentSchema);

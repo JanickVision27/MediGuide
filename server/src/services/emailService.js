@@ -648,3 +648,109 @@ export async function sendAppointmentConfirmation({
     text,
   });
 }
+
+/**
+ * Cancellation notice for a demo appointment.
+ *
+ * Sent fire-and-forget from the cancel endpoint: the cancellation is already
+ * committed, so a provider outage must never fail the request. Delivery uses the
+ * configured provider (Brevo or Resend) exactly like every other notification.
+ */
+export async function sendAppointmentCancellation({
+  to,
+  patientName,
+  doctor,
+  specialty,
+  hospital,
+  date,
+  time,
+  reason,
+}) {
+  const formattedDate = displayDate(date);
+  const formattedTime = displayTime(time);
+  const hospitalLocation = hospital
+    ? [hospital.address, hospital.city, hospital.state].filter(Boolean).join(", ")
+    : "";
+
+  const detailRows = [
+    detailRow("Doctor", doctor),
+    detailRow("Specialty", specialty),
+    hospital?.name ? detailRow("Hospital", hospital.name) : "",
+    hospitalLocation ? detailRow("Hospital location", hospitalLocation) : "",
+    detailRow("Was scheduled for", `${formattedDate} at ${formattedTime}`),
+    reason ? detailRow("Reason", reason) : "",
+  ].join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appointment Cancelled</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#b91c1c 0%,#7f1d1d 100%);padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">MediGuide</h1>
+              <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">Your Demo Appointment Was Cancelled</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:36px 40px;">
+              <p style="margin:0 0 8px;color:#374151;font-size:16px;">Hi <strong>${escapeHtml(patientName)}</strong>,</p>
+              <p style="margin:0 0 28px;color:#6b7280;font-size:14px;line-height:1.6;">
+                This demo appointment has been cancelled as requested. No further reminders will be sent for it.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+                <tr>
+                  <td>
+                    <table width="100%" cellpadding="0" cellspacing="0">${detailRows}</table>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+                You can book a new appointment at any time from your MediGuide dashboard.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc;padding:20px 40px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
+                © ${new Date().getFullYear()} MediGuide · Educational demo only. This email does not cancel a real doctor or hospital appointment.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const text = [
+    `Hi ${patientName},`,
+    "",
+    "This demo appointment has been cancelled as requested.",
+    `Doctor: ${doctor}`,
+    `Specialty: ${specialty}`,
+    hospital?.name ? `Hospital: ${hospital.name}` : "",
+    hospitalLocation ? `Hospital location: ${hospitalLocation}` : "",
+    `Was scheduled for: ${formattedDate} at ${formattedTime}`,
+    reason ? `Reason: ${reason}` : "",
+    "",
+    "No further reminders will be sent for it.",
+    "Educational demo only. This is not a real doctor or hospital appointment.",
+  ].filter((line) => line !== "").join("\n");
+
+  return sendEmail({
+    to,
+    toName: patientName,
+    subject: "Appointment Cancelled – MediGuide Demo",
+    html,
+    text,
+  });
+}

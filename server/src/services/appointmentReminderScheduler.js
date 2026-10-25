@@ -7,9 +7,14 @@ import {
   sendAppointmentReminder,
 } from "./emailService.js";
 import { buildReminderSchedule } from "./appointmentReminders.js";
+import { completeFinishedAppointments } from "./appointmentLifecycle.js";
 
 const LEASE_MS = 2 * 60 * 1000;
 const TICK_MS = 15 * 1000;
+// The completion sweep is heavier than a reminder check, so run it at most once
+// per minute even though the scheduler ticks every 15 seconds.
+const COMPLETION_SWEEP_INTERVAL_MS = 60 * 1000;
+let lastCompletionSweepAt = 0;
 
 function safeSchedulerError(error) {
   return { code: safeEmailProviderFailure(error).providerCode || "scheduler_error" };
@@ -153,6 +158,17 @@ async function processReminder(candidate, reminder, now) {
 }
 
 export async function processDueAppointmentReminders(now = new Date()) {
+  // Promote finished appointments to "Completed" even when no patient opens the
+  // app, so pending reminders for a past visit stop being sent.
+  if (now.getTime() - lastCompletionSweepAt >= COMPLETION_SWEEP_INTERVAL_MS) {
+    lastCompletionSweepAt = now.getTime();
+    try {
+      await completeFinishedAppointments({ now });
+    } catch (error) {
+      console.error("Appointment completion sweep failed.", safeSchedulerError(error));
+    }
+  }
+
   const legacyAppointments = await Appointment.find({
     status: "Upcoming",
     remindersInitialized: { $ne: true },

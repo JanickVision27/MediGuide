@@ -22,6 +22,8 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Persistent, account-specific profile editing with optional profile photos and workspace avatars
 - Per-user appointment booking/cancellation with active-provider verification and a validated
   snapshot of the hospital selected from the live directory
+- Automatic `Upcoming -> Completed` transition once a visit ends (`APPOINTMENT_DURATION_MINUTES`,
+  default 30) and cancellation e-mails through the configured email provider
 - Optional Resend appointment confirmations/reminders and password-reset emails, plus persistent
   in-app reminder/notification APIs
 - Synthetic doctor directory with specialty/location filtering
@@ -83,6 +85,10 @@ RESEND_API_KEY=re_your_actual_key
 MAIL_FROM="MediGuide <appointments@your-verified-domain.com>"
 APP_URL=http://localhost:5173
 ```
+
+`APPOINTMENT_DURATION_MINUTES` (default 30, range 0-480) controls when an appointment counts as
+finished: once its start time plus that duration has passed it is stored and displayed as
+`Completed`, and its pending reminders are cancelled.
 
 Resend's shared `onboarding@resend.dev` sender only delivers to the Resend account owner's address.
 `GET /api/health/email` reports the active provider, whether a key is present, and the parsed
@@ -206,7 +212,7 @@ attribution and the fictional-provider/non-affiliation disclaimers remain visibl
 | `GET /api/appointments/reminders` | List owned reminders and in-app notifications |
 | `PATCH /api/appointments/:id/reminders` | Update owned reminder preferences |
 | `PATCH /api/appointments/:id/checklist` | Update the owned readiness checklist |
-| `PATCH /api/appointments/:id/cancel` | Cancel an owned upcoming appointment |
+| `PATCH /api/appointments/:id/cancel` | Cancel an owned upcoming appointment and email a notice |
 | `GET /api/hospitals/search` | Search/cache OpenStreetMap or Google hospital listings |
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
 | `GET /api/doctors` | List/filter active synthetic doctors |

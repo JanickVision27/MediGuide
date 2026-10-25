@@ -18,6 +18,70 @@ function getToday() {
   return `${year}-${month}-${day}`
 }
 
+// Mirrors the server's appointment duration (APPOINTMENT_DURATION_MINUTES).
+const APPOINTMENT_DURATION_MINUTES = 30
+
+/**
+ * Compute when an appointment is over by interpreting its date/time in its own
+ * timezone. Used so the badge and tabs are correct the moment a visit ends, even
+ * if the stored status is still "Upcoming" (for example while the API is asleep).
+ */
+function getAppointmentEndTime(appointment) {
+  const { date, time, timeZone = 'Asia/Kolkata' } = appointment || {}
+  if (!date || !time) return null
+
+  const [year, month, day] = String(date).split('-').map(Number)
+  const [hour, minute] = String(time).split(':').map(Number)
+  if ([year, month, day, hour, minute].some((value) => !Number.isFinite(value))) return null
+
+  const desired = Date.UTC(year, month - 1, day, hour, minute)
+  let candidate = desired
+
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(new Date(candidate))
+      const local = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]))
+      const represented = Date.UTC(
+        local.year,
+        local.month - 1,
+        local.day,
+        local.hour,
+        local.minute,
+        local.second,
+      )
+      const difference = desired - represented
+      if (difference === 0) break
+      candidate += difference
+    }
+  } catch {
+    return null
+  }
+
+  return new Date(candidate + APPOINTMENT_DURATION_MINUTES * 60_000)
+}
+
+/**
+ * The status shown in the UI. Cancelled/Completed come from the server; an
+ * "Upcoming" appointment that has already ended is displayed as "Completed".
+ */
+function resolveAppointmentStatus(appointment, now = new Date()) {
+  const status = appointment?.status || 'Upcoming'
+  if (status !== 'Upcoming') return status
+
+  const endsAt = getAppointmentEndTime(appointment)
+  if (endsAt && endsAt.getTime() <= now.getTime()) return 'Completed'
+  return 'Upcoming'
+}
+
 function formatDate(date) {
   return new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', {
     day: 'numeric',
@@ -241,15 +305,10 @@ export default function Appointments() {
     () =>
       appointments
         .filter((appointment) => {
-          const isPastDate = appointment.date < today
-          if (activeTab === 'Upcoming') {
-            return appointment.status === 'Upcoming' && !isPastDate
-          }
-          return (
-            appointment.status === 'Completed' ||
-            appointment.status === 'Cancelled' ||
-            isPastDate
-          )
+          const status = resolveAppointmentStatus(appointment)
+          return activeTab === 'Upcoming'
+            ? status === 'Upcoming'
+            : status === 'Completed' || status === 'Cancelled'
         })
         .sort((a, b) => {
           const first = `${a.date} ${a.time}`
@@ -258,17 +317,14 @@ export default function Appointments() {
             ? first.localeCompare(second)
             : second.localeCompare(first)
         }),
-    [appointments, activeTab, today],
+    [appointments, activeTab],
   )
 
   const upcomingCount = appointments.filter(
-    (appointment) => appointment.status === 'Upcoming' && appointment.date >= today,
+    (appointment) => resolveAppointmentStatus(appointment) === 'Upcoming',
   ).length
   const pastCount = appointments.filter(
-    (appointment) =>
-      appointment.status === 'Completed' ||
-      appointment.status === 'Cancelled' ||
-      appointment.date < today,
+    (appointment) => resolveAppointmentStatus(appointment) !== 'Upcoming',
   ).length
 
   const availableCities = useMemo(
@@ -502,7 +558,12 @@ export default function Appointments() {
             : item,
         ),
       )
-      setMessage('Appointment cancelled successfully.')
+      const emailQueued = result?.notification?.email === 'queued'
+      setMessage(
+        emailQueued
+          ? 'Appointment cancelled successfully. A cancellation email is on its way to your account address.'
+          : 'Appointment cancelled successfully. Reminders for this appointment have been stopped.',
+      )
     } catch (err) {
       setError(requestError(err, 'Unable to cancel appointment. Please try again.'))
     } finally {
@@ -858,8 +919,8 @@ export default function Appointments() {
               .join('')
               .slice(0, 2)
               .toUpperCase() || 'D'
-            const status = appointment.status || 'Upcoming'
-            const canCancel = status === 'Upcoming' && appointment.date >= today
+            const status = resolveAppointmentStatus(appointment)
+            const canCancel = status === 'Upcoming' 
             const hospital = appointment.hospital
             const mapUrl = hospitalMapUrl(hospital)
 

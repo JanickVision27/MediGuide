@@ -2,11 +2,23 @@ import mongoose from "mongoose";
 
 import Appointment from "../models/Appointment.js";
 import Doctor from "../models/Doctor.js";
-import { sendAppointmentConfirmation } from "../services/emailService.js";
+import {
+  getEmailConfiguration,
+  sendAppointmentCancellation,
+  sendAppointmentConfirmation,
+} from "../services/emailService.js";
+import { completeFinishedAppointments } from "../services/appointmentLifecycle.js";
 import { appointmentDateTimeToUtc, buildReminderSchedule, DEFAULT_REMINDER_OFFSETS } from "../services/appointmentReminders.js";
 
 export async function getAppointments(req, res, next) {
   try {
+    // Settle statuses before reading so finished appointments never come back as
+    // "Upcoming". This keeps the list correct even when the background scheduler
+    // was asleep (for example on a free hosting tier).
+    await completeFinishedAppointments({ userId: req.userId }).catch((error) => {
+      console.error("Appointment completion sweep failed.", error?.message);
+    });
+
     const appointments = await Appointment.find({ userId: req.userId }).sort({
       createdAt: -1,
     });
@@ -142,8 +154,27 @@ export async function cancelAppointment(req, res, next) {
       });
     }
 
+    // Cancellation notice is fire-and-forget: the record is already cancelled, so
+    // a provider outage must not turn a successful cancellation into an error.
+    void sendAppointmentCancellation({
+      to: appointment.patientEmail,
+      patientName: appointment.patientName,
+      doctor: appointment.doctor,
+      specialty: appointment.specialty,
+      hospital: appointment.hospital,
+      date: appointment.date,
+      time: appointment.time,
+      reason: appointment.reason,
+    }).catch((error) => {
+      console.error("Appointment cancellation email delivery failed.", error?.message);
+    });
+
     return res.status(200).json({
       message: "Appointment cancelled successfully.",
+      // Surface delivery state so the client can tell the patient what happened.
+      notification: getEmailConfiguration().configured
+        ? { email: "queued" }
+        : { email: "unavailable" },
       appointment,
     });
   } catch (error) {

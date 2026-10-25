@@ -129,6 +129,18 @@ work in production**. The API supports two, selected with `EMAIL_PROVIDER`:
 - Switching back to Resend later needs no code change: set `EMAIL_PROVIDER=resend` and a
   `MAIL_FROM` on your verified domain.
 
+## 2c. Appointment status and notifications
+
+- An appointment is created as `Upcoming` and is promoted to `Completed` once its start time plus
+  `APPOINTMENT_DURATION_MINUTES` (default 30) has passed. The sweep runs on every
+  `GET /api/appointments` (for that patient) and once a minute from the reminder scheduler, so the
+  badge matches reality even after a free-tier sleep. Pending reminders for a finished visit are
+  marked cancelled at the same time.
+- Cancelling an appointment sends a **cancellation email** through the configured provider
+  (`EMAIL_PROVIDER`) and stops its reminders. Delivery is fire-and-forget: the cancellation always
+  succeeds even if the provider is down; the API returns
+  `notification.email: "queued" | "unavailable"` so the UI can phrase the confirmation.
+
 ## 3. Troubleshooting "Failed to fetch"
 
 `fetch` only throws that error when **no HTTP response is readable**. Work down this list:

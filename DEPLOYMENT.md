@@ -199,6 +199,55 @@ curl -i -X OPTIONS https://mediguide-0a1e.onrender.com/api/auth/register \
   -H "Access-Control-Request-Headers: content-type"
 ```
 
+## 4. Why the session check is slow (and the performance playbook)
+
+`/api/auth/me` itself does almost nothing expensive (JWT verification is
+microseconds plus one indexed Mongo lookup). The waiting comes from hosting, in
+this order of impact:
+
+1. **Render free-tier cold start (dominant).** The service sleeps after ~15
+   minutes without traffic. The next request wakes it, and until the Node
+   process calls `listen()` Render returns its "Application loading" page, which
+   the Vercel rewrite surfaces as a 502. The client retries with backoff, so the
+   visitor sees "Loading your workspace…" for 30-60+ seconds. Options:
+   - **Always-on instance (complete fix):** upgrade the Render service to the
+     Starter plan (~$7/month). The instance never sleeps.
+   - **Keep it warm (free mitigation):** the committed
+     `.github/workflows/keepalive.yml` pings `/api/health` every 5 minutes.
+     GitHub disables scheduled workflows after ~60 days of no repository
+     activity, so add a second external pinger (cron-job.org, UptimeRobot or
+     BetterStack) hitting
+     `https://mediguide-0a1e.onrender.com/api/health` every 10 minutes.
+   - The server now calls `listen()` immediately after the Mongo connection and
+     runs index creation, demo seeding and the reminder scheduler as background
+     warm-up, so a cold start becomes ready as early as possible.
+2. **Region distance (important for India users).** Put the Render service in
+   **Singapore** (see `render.yaml`) and the MongoDB Atlas cluster in the same
+   region (AWS `ap-southeast-1`). A US region adds a full inter-continental
+   round trip to *every* request, including each session check.
+3. **The Vercel → Render proxy hop.** Every `/api/*` call travels browser →
+   Vercel edge → Render → Atlas and back. It is required for the first-party
+   session cookie, but it only feels slow when Render is asleep or
+   cross-region. Do not point the browser directly at the Render origin without
+   setting `SESSION_COOKIE_SAME_SITE=none`.
+4. **Deploy/build time.** The 86 MB `medicine_dataset.csv` is no longer tracked
+   in git (the runtime only reads `server/data/medicines_cleaned.json`), so new
+   builds do not check it out. The file remains in older git history; to shrink
+   clones as well, rewrite history once with `git filter-repo --invert-paths
+   --path medicine_dataset.csv` and force-push (coordinate with collaborators).
+5. **Moving the API itself onto Vercel is not recommended.** Vercel functions
+   are stateless and short-lived (10 s limit on Hobby): the in-process
+   appointment reminder scheduler would stop running, Mongoose connections need
+   explicit caching across invocations, and long AI/PDF calls risk timeouts.
+   Keep the Express API on a long-lived host (Render, Railway, Koyeb or Fly.io).
+
+### Optional client-side masking
+
+`AuthProvider` blocks every protected page until `/api/auth/me` resolves. If
+warm latency still bothers users, persist the last user payload in
+`localStorage`, render it immediately, and revalidate the session in the
+background instead of showing a full-page spinner on every visit.
+
 ## Notes and limits
 
 - **Uploads:** Vercel proxies requests, and serverless request bodies are capped around 4.5 MB.

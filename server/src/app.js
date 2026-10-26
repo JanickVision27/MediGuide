@@ -157,25 +157,55 @@ export async function startServer() {
       (allowedOrigins.allowAny ? " + ANY ORIGIN (CORS_ALLOW_ANY_ORIGIN=true)" : "")
   );
 
-  // Connect to MongoDB before accepting requests.
-  await mongoose.connect(mongoUri);
+  // Connect to MongoDB before accepting requests. A misconfigured URI should
+  // fail fast instead of burning through Render's boot window on the default
+  // 30s server-selection timeout.
+  await mongoose.connect(mongoUri, {
+    serverSelectionTimeoutMS: 10_000,
+  });
   console.log("MongoDB connected successfully");
 
-  await Promise.all([
-    Appointment.init(),
-    InAppNotification.init(),
-  ]);
-
-  await seedDemoDoctors();
-  console.log("Demo doctors synchronized");
-
-  startAppointmentReminderScheduler();
-  console.log("Appointment reminder scheduler started");
-
-  // Start the server on Render's assigned port.
-  return app.listen(port, "0.0.0.0", () => {
+  // Start listening immediately. On Render's free tier every millisecond before
+  // listen() lengthens the cold start, during which the platform serves its
+  // "Application loading" page (surfaced to the Vercel proxy as a 502) and the
+  // visitor's /api/auth/me session check stalls. Index creation, demo seeding
+  // and the in-process scheduler are not needed to answer the first request, so
+  // they run as background warm-up instead of blocking the boot.
+  const server = app.listen(port, "0.0.0.0", () => {
     console.log(`MediGuide API listening on port ${port}`);
   });
+
+  void warmUpAfterListen();
+
+  return server;
+}
+
+// Post-listen warm-up. Each step is isolated: a failure (for example a slow
+// Atlas response on a cold start) is logged and retried on the next deploy,
+// instead of crashing the process and sending Render into a crash loop.
+async function warmUpAfterListen() {
+  try {
+    await Promise.all([
+      Appointment.init(),
+      InAppNotification.init(),
+    ]);
+  } catch (error) {
+    console.error("Index initialization failed:", error.message);
+  }
+
+  try {
+    await seedDemoDoctors();
+    console.log("Demo doctors synchronized");
+  } catch (error) {
+    console.error("Demo doctor seeding failed:", error.message);
+  }
+
+  try {
+    startAppointmentReminderScheduler();
+    console.log("Appointment reminder scheduler started");
+  } catch (error) {
+    console.error("Reminder scheduler failed to start:", error.message);
+  }
 }
 
 // Start only when this file is executed directly.

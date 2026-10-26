@@ -55,7 +55,8 @@ CORS allow-list: https://medi-guide-care.vercel.app, https://mediguide-0a1e.onre
 ```
 
 Note: on Render's free plan the service sleeps after inactivity. The first request can take
-~50 seconds; the client shows a "server is waking up" message and retries automatically.
+~50 seconds. Sign-in keeps the original request alive, shows a non-error waiting notice, and
+continues automatically when the API is ready; there is no need to submit the form again.
 
 ## 2. Vercel (frontend)
 
@@ -152,9 +153,9 @@ work in production**. The API supports two, selected with `EMAIL_PROVIDER`:
 | Request URL is `http://localhost:5000/...` | `VITE_API_URL` baked into a stale build | Unset `VITE_API_URL` on Vercel and redeploy |
 | Vercel 404 page instead of the app | Missing SPA rewrite | `client/vercel.json` (committed) |
 | Vercel 404 for `/api/health` | Proxy rewrite missing / wrong API host | `client/vercel.json` |
-| First request after idling fails or hangs ~50 s | Render free-tier cold start | Retry automatically (already implemented) or upgrade the plan |
+| First request after idling waits ~50 s | Render free-tier cold start | Keep the page open; the request retries automatically. Use the keep-alive workflow or an always-on plan to prevent it |
 | `429 Too many sign-in attempts` | Rate limiter keyed on the proxy IP | `app.set("trust proxy", 1)` (committed) plus a 20-attempt budget for failed attempts only |
-| **502** on every `/api/*` call; the response body is Render's "Application loading" page | The Render instance is asleep/booting (free tier) and the Vercel proxy cannot reach it | Reload after ~60 s, keep the instance warm (see "Free-tier sleep" below), or upgrade to a paid instance |
+| **502** on every `/api/*` call; the response body is Render's "Application loading" page | The Render instance is asleep/booting (free tier) and the Vercel proxy cannot reach it | Keep the page open for automatic retry; if it persists, check `/api/health`, keep the instance warm (see below), or use an always-on instance |
 | 502 persists after the API is clearly back (`/api/health` works with `?probe=1`) | A cold-start error page got cached at the CDN | `client/vercel.json` sends `no-store` for `/api/*`; redeploy the client and hard-reload |
 
 ### Free-tier sleep (502 / "waking up")
@@ -166,13 +167,18 @@ problem: `/api/health` (which needs no session) fails at the same time.
 
 Mitigations in this repo:
 
-- `.github/workflows/keepalive.yml` pings the health endpoint every 10 minutes, so the instance
-  stays warm (free; disable it if you move to a paid instance).
-- `client/src/api.js` retries 502/503/504 and HTML boot pages with backoff for ~50 s, then shows a
-  "server is starting up" message instead of a generic error.
+- `.github/workflows/keepalive.yml` pings the health endpoint every 5 minutes, with extra time for
+  scheduler delays. It accepts only valid health JSON with `database: "connected"`; a Render HTML
+  loading page does not count as a successful ping. Check **Actions → Keep API awake** after deploying
+  to confirm runs are enabled and green (GitHub schedules are best-effort, not an uptime guarantee).
+- `client/src/api.js` retries proxy 502/503/504 responses, HTML boot pages, and dropped connections
+  with backoff for about two minutes. The login page shows a waiting notice and finishes the same
+  sign-in attempt automatically. Real JSON API errors, including wrong passwords and rate limits,
+  are returned immediately rather than retried.
 - `client/vercel.json` marks `/api/*` as `no-store` so a cached error page can never look permanent.
-- The permanent fix is a paid Render instance type, which never sleeps (the in-process reminder
-  scheduler also only runs while the instance is awake).
+- The only hosting-level way to eliminate cold starts completely is an always-on Render instance
+  (or another always-on host). A free keep-alive monitor is only a mitigation; the in-process
+  reminder scheduler also runs only while the instance is awake.
 
 | Emails arrive locally but never from Render | Missing `EMAIL_PROVIDER`/`BREVO_API_KEY`/`MAIL_FROM` on Render, or SMTP credentials used on a host that blocks SMTP | Use Brevo/Resend over HTTPS (see 2b), then check `/api/health/email` |
 | Registers, then immediately bounces to `/login` | Session cookie dropped as a third-party/`SameSite=Lax` cookie | Use the `/api` proxy, or set `SESSION_COOKIE_SAME_SITE=none` on Render |

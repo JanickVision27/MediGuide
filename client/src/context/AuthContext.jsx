@@ -40,15 +40,15 @@ export function AuthProvider({ children }) {
     refreshUser()
   }, [refreshUser])
 
-  const login = useCallback(async (credentials) => {
-    const result = await apiLogin(credentials)
+  const login = useCallback(async (credentials, options) => {
+    const result = await apiLogin(credentials, options)
     clearProfilePhotoCache()
     setUser(result.user)
     return result.user
   }, [])
 
-  const register = useCallback(async (details) => {
-    const result = await apiRegister(details)
+  const register = useCallback(async (details, options) => {
+    const result = await apiRegister(details, options)
     clearProfilePhotoCache()
     setUser(result.user)
     return result.user

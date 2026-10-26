@@ -12,6 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isWaitingForServer, setIsWaitingForServer] = useState(false)
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
@@ -20,10 +21,14 @@ export default function Login() {
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
+    setIsWaitingForServer(false)
     setIsSubmitting(true)
 
     try {
-      await login({ email: form.email.trim(), password: form.password })
+      await login(
+        { email: form.email.trim(), password: form.password },
+        { onWaiting: () => setIsWaitingForServer(true) },
+      )
       const destination = location.state?.from
       const isInternalDestination =
         typeof destination === 'string' &&
@@ -33,6 +38,7 @@ export default function Login() {
     } catch (err) {
       setError(err.message || 'Unable to sign in right now.')
     } finally {
+      setIsWaitingForServer(false)
       setIsSubmitting(false)
     }
   }
@@ -85,7 +91,26 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-7 space-y-5">
+          {isWaitingForServer && !error && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-5 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"
+            >
+              <span
+                aria-hidden="true"
+                className="mt-1.5 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-brand-600"
+              />
+              <div>
+                <p className="font-semibold">Signing you in automatically…</p>
+                <p className="mt-1 leading-relaxed text-brand-800">
+                  The server was idle and is restarting. Keep this page open; there is no need to press Sign in again.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-7 space-y-5" aria-busy={isSubmitting}>
             <div>
               <label htmlFor="email" className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Email address
@@ -132,7 +157,11 @@ export default function Login() {
               />
             </div>
             <button type="submit" disabled={isSubmitting} className="btn-primary w-full py-3">
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
+              {isWaitingForServer
+                ? 'Waiting for server…'
+                : isSubmitting
+                  ? 'Signing in…'
+                  : 'Sign in'}
             </button>
           </form>
 

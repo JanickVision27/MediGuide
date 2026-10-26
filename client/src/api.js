@@ -44,34 +44,51 @@ export const REMOTE_API_URL = REMOTE_API_BASE
 const NETWORK_ERROR_MESSAGE =
   'We could not reach the MediGuide server. It may be waking up after a period of inactivity - please wait a few seconds and try again.'
 
-// Render's free tier stops idle services; the first request then waits for a cold
-// start or fails outright. Retrying once turns that into a short delay instead of
-// a scary "Failed to fetch" message.
+const WAKE_UP_MESSAGE =
+  'The MediGuide server is starting up after a period of inactivity. This can take up to a minute - please try again in a moment.'
+
+// Render's free tier stops idle services and answers the first requests with its
+// "Application loading" page (HTTP 502 through the Vercel proxy). Retrying with
+// backoff turns a cold start into a short wait instead of an error, and matches
+// how long a real cold start takes (~30-60s).
 const RETRYABLE_STATUSES = new Set([502, 503, 504])
-const RETRY_DELAY_MS = 2500
-const MAX_ATTEMPTS = 2
+const RETRY_DELAYS_MS = [2000, 5000, 10000, 15000, 20000]
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchWithRetry(url, init, { retries = MAX_ATTEMPTS } = {}) {
+/**
+ * A response the API could never have produced: a proxy/edge error status, or an
+ * HTML page (Render's boot screen) where this client always expects JSON.
+ */
+function isWakeUpResponse(response) {
+  if (RETRYABLE_STATUSES.has(response.status)) return true
+  if (!response.ok) return false
+  return (response.headers.get('content-type') || '').includes('text/html')
+}
+
+async function fetchWithRetry(url, init) {
+  const maxAttempts = RETRY_DELAYS_MS.length + 1
   let lastError
 
-  for (let attempt = 1; attempt <= retries; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const delay = RETRY_DELAYS_MS[attempt - 1]
+    const canRetry = attempt < maxAttempts
+
     try {
       const response = await fetch(url, init)
 
-      if (RETRYABLE_STATUSES.has(response.status) && attempt < retries) {
-        await sleep(RETRY_DELAY_MS)
+      if (isWakeUpResponse(response) && canRetry) {
+        await sleep(delay)
         continue
       }
       return response
     } catch (error) {
       lastError = error
       // Aborts (unmounted components, cancelled photo loads) are not retried.
-      if (error?.name === 'AbortError' || attempt === retries) throw error
-      await sleep(RETRY_DELAY_MS)
+      if (error?.name === 'AbortError' || !canRetry) throw error
+      await sleep(delay)
     }
   }
 
@@ -85,6 +102,9 @@ async function request(path, options = {}) {
   try {
     response = await fetchWithRetry(`${API_BASE}${path}`, {
       credentials: 'include',
+      // Never let the browser replay a cached API response (a cached 502 from a
+      // sleeping backend would otherwise look permanent).
+      cache: 'no-store',
       ...options,
       headers: {
         ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
@@ -102,18 +122,33 @@ async function request(path, options = {}) {
     throw networkError
   }
 
+  const contentType = response.headers.get('content-type') || ''
   const payload = await response.json().catch(() => ({}))
+
   if (!response.ok) {
     const error = new Error(
       payload.message ||
         payload.error ||
-        (response.status === 404
-          ? 'The MediGuide API was not found. Check that the backend is deployed and reachable.'
-          : 'Something went wrong. Please try again.'),
+        (RETRYABLE_STATUSES.has(response.status)
+          ? WAKE_UP_MESSAGE
+          : response.status === 404
+            ? 'The MediGuide API was not found. Check that the backend is deployed and reachable.'
+            : 'Something went wrong. Please try again.'),
     )
     error.status = response.status
+    error.isWakeUpError = RETRYABLE_STATUSES.has(response.status)
     throw error
   }
+
+  // A 200 that is not JSON means a proxy served an HTML page instead of the API
+  // (for example Render's boot screen during a cold start).
+  if (contentType.includes('text/html')) {
+    const error = new Error(WAKE_UP_MESSAGE)
+    error.status = 503
+    error.isWakeUpError = true
+    throw error
+  }
+
   return payload
 }
 

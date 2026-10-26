@@ -1,0 +1,53 @@
+name: Keep API awake
+
+# Render's free web services stop after ~15 minutes without traffic. The next
+# request then waits for a 30-60s cold start, and the Vercel proxy answers 502
+# (with Render's "Application loading" page) until the instance is ready.
+#
+# This workflow sends a lightweight request every 10 minutes so the API stays
+# warm for the deployed demo. It calls the health endpoint directly (not through
+# Vercel) to avoid polluting any CDN cache.
+#
+# Notes:
+# - GitHub's scheduled workflows can start a few minutes late under load.
+# - Disable this file (or the workflow in the Actions tab) if you move the API to
+#   a paid Render plan, where services do not sleep.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-api-awake
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the MediGuide API health endpoint
+        env:
+          API_URL: https://mediguide-0a1e.onrender.com/api/health
+        run: |
+          set -u
+          echo "Pinging $API_URL"
+          # 3 attempts, 20s apart: a cold start can outlive a single request.
+          for attempt in 1 2 3; do
+            status=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 60 "$API_URL" || echo 000)
+            echo "attempt $attempt -> HTTP $status"
+            if [ "$status" = "200" ]; then
+              cat /tmp/health.json
+              echo
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "API did not respond with 200; last body:"
+          cat /tmp/health.json 2>/dev/null || true
+          # Fail the run so a genuinely broken deployment is visible in the repo.
+          exit 1

@@ -154,6 +154,26 @@ work in production**. The API supports two, selected with `EMAIL_PROVIDER`:
 | Vercel 404 for `/api/health` | Proxy rewrite missing / wrong API host | `client/vercel.json` |
 | First request after idling fails or hangs ~50 s | Render free-tier cold start | Retry automatically (already implemented) or upgrade the plan |
 | `429 Too many sign-in attempts` | Rate limiter keyed on the proxy IP | `app.set("trust proxy", 1)` (committed) plus a 20-attempt budget for failed attempts only |
+| **502** on every `/api/*` call; the response body is Render's "Application loading" page | The Render instance is asleep/booting (free tier) and the Vercel proxy cannot reach it | Reload after ~60 s, keep the instance warm (see "Free-tier sleep" below), or upgrade to a paid instance |
+| 502 persists after the API is clearly back (`/api/health` works with `?probe=1`) | A cold-start error page got cached at the CDN | `client/vercel.json` sends `no-store` for `/api/*`; redeploy the client and hard-reload |
+
+### Free-tier sleep (502 / "waking up")
+
+Render free web services stop after ~15 minutes without traffic. During the next request Render
+serves its **"Application loading"** page and the Vercel proxy turns that into **502**, so
+`/api/auth/me` and `/api/auth/login` fail until boot completes. This is not an authentication
+problem: `/api/health` (which needs no session) fails at the same time.
+
+Mitigations in this repo:
+
+- `.github/workflows/keepalive.yml` pings the health endpoint every 10 minutes, so the instance
+  stays warm (free; disable it if you move to a paid instance).
+- `client/src/api.js` retries 502/503/504 and HTML boot pages with backoff for ~50 s, then shows a
+  "server is starting up" message instead of a generic error.
+- `client/vercel.json` marks `/api/*` as `no-store` so a cached error page can never look permanent.
+- The permanent fix is a paid Render instance type, which never sleeps (the in-process reminder
+  scheduler also only runs while the instance is awake).
+
 | Emails arrive locally but never from Render | Missing `EMAIL_PROVIDER`/`BREVO_API_KEY`/`MAIL_FROM` on Render, or SMTP credentials used on a host that blocks SMTP | Use Brevo/Resend over HTTPS (see 2b), then check `/api/health/email` |
 | Registers, then immediately bounces to `/login` | Session cookie dropped as a third-party/`SameSite=Lax` cookie | Use the `/api` proxy, or set `SESSION_COOKIE_SAME_SITE=none` on Render |
 

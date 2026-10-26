@@ -143,16 +143,20 @@ npm run build
 npm run preview
 ```
 
-### Server tests
+### Client and server tests
 
 ```bash
-cd server
+cd client
+npm test
+
+cd ../server
 npm test
 ```
 
-The tests cover password-reset token behavior, reminder scheduling, model registration, CORS
-origin handling and session-cookie policy, and safe email configuration/diagnostics without
-requiring a live MongoDB connection or sending real email.
+The client tests cover cold-start retries, HTML loading pages, network failures, immediate API
+errors, and cancellation. The server tests cover password-reset token behavior, reminder
+scheduling, model registration, CORS origin handling and session-cookie policy, and safe email
+configuration/diagnostics without requiring a live MongoDB connection or sending real email.
 
 ## Deployment (Vercel frontend + Render API)
 

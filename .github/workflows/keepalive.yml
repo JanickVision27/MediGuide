@@ -4,19 +4,25 @@ name: Keep API awake
 # request then waits for a 30-60s cold start, and the Vercel proxy answers 502
 # (with Render's "Application loading" page) until the instance is ready.
 #
-# This workflow sends a lightweight request every 10 minutes so the API stays
-# warm for the deployed demo. It calls the health endpoint directly (not through
-# Vercel) to avoid polluting any CDN cache.
+# This workflow sends a lightweight request every 5 minutes so the API stays
+# warm for the deployed demo. The interval leaves room for GitHub scheduler
+# delays before Render's ~15-minute idle timeout. It calls the health endpoint
+# directly (not through Vercel) to avoid polluting any CDN cache.
 #
 # Notes:
-# - GitHub's scheduled workflows can start a few minutes late under load.
+# - GitHub schedules are best-effort and can be delayed; an external uptime
+#   monitor or an always-on Render plan is the permanent hosting-level option.
 # - Disable this file (or the workflow in the Actions tab) if you move the API to
 #   a paid Render plan, where services do not sleep.
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
+  # Warm the API as soon as a keep-alive fix reaches the deployed branch.
+  push:
+    branches: [main]
+    paths: [.github/workflows/keepalive.yml]
 
 permissions:
   contents: read
@@ -38,16 +44,25 @@ jobs:
           echo "Pinging $API_URL"
           # 3 attempts, 20s apart: a cold start can outlive a single request.
           for attempt in 1 2 3; do
-            status=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 60 "$API_URL" || echo 000)
+            probe="attempt-$attempt-$(date +%s)"
+            status=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 60 "$API_URL?probe=$probe" || echo 000)
             echo "attempt $attempt -> HTTP $status"
-            if [ "$status" = "200" ]; then
+
+            # Render's loading page can itself return HTTP 200. Only valid API
+            # JSON with a live database proves that the service is actually up.
+            if [ "$status" = "200" ] && node -e '
+              const fs = require("node:fs");
+              const health = JSON.parse(fs.readFileSync("/tmp/health.json", "utf8"));
+              if (health.status !== "ok" || health.database !== "connected") process.exit(1);
+            ' 2>/dev/null; then
               cat /tmp/health.json
               echo
               exit 0
             fi
+            echo "API is still starting or is not ready"
             sleep 20
           done
-          echo "API did not respond with 200; last body:"
+          echo "API did not become ready; last body:"
           cat /tmp/health.json 2>/dev/null || true
           # Fail the run so a genuinely broken deployment is visible in the repo.
           exit 1

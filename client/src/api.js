@@ -1,3 +1,8 @@
+import {
+  fetchWithRetry,
+  isWakeUpResponse,
+} from './utils/apiRetry.js'
+
 // The browser always talks to the API through its own origin (relative "/api"):
 // Vite proxies it in development and `client/vercel.json` proxies it in production.
 // Same-origin requests mean no CORS preflight, no third-party cookie, and no
@@ -45,72 +50,33 @@ const NETWORK_ERROR_MESSAGE =
   'We could not reach the MediGuide server. It may be waking up after a period of inactivity - please wait a few seconds and try again.'
 
 const WAKE_UP_MESSAGE =
-  'The MediGuide server is starting up after a period of inactivity. This can take up to a minute - please try again in a moment.'
-
-// Render's free tier stops idle services and answers the first requests with its
-// "Application loading" page (HTTP 502 through the Vercel proxy). Retrying with
-// backoff turns a cold start into a short wait instead of an error, and matches
-// how long a real cold start takes (~30-60s).
-const RETRYABLE_STATUSES = new Set([502, 503, 504])
-const RETRY_DELAYS_MS = [2000, 5000, 10000, 15000, 20000]
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/**
- * A response the API could never have produced: a proxy/edge error status, or an
- * HTML page (Render's boot screen) where this client always expects JSON.
- */
-function isWakeUpResponse(response) {
-  if (RETRYABLE_STATUSES.has(response.status)) return true
-  if (!response.ok) return false
-  return (response.headers.get('content-type') || '').includes('text/html')
-}
-
-async function fetchWithRetry(url, init) {
-  const maxAttempts = RETRY_DELAYS_MS.length + 1
-  let lastError
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const delay = RETRY_DELAYS_MS[attempt - 1]
-    const canRetry = attempt < maxAttempts
-
-    try {
-      const response = await fetch(url, init)
-
-      if (isWakeUpResponse(response) && canRetry) {
-        await sleep(delay)
-        continue
-      }
-      return response
-    } catch (error) {
-      lastError = error
-      // Aborts (unmounted components, cancelled photo loads) are not retried.
-      if (error?.name === 'AbortError' || !canRetry) throw error
-      await sleep(delay)
-    }
-  }
-
-  throw lastError
-}
+  'The MediGuide server is taking longer than expected to restart. Your details are still here - please try again shortly.'
 
 async function request(path, options = {}) {
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  // onWaiting is a UI callback, not a Fetch API option. Keep it out of init.
+  const { onWaiting, ...fetchOptions } = options
+  const isFormData =
+    typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData
   let response
 
   try {
-    response = await fetchWithRetry(`${API_BASE}${path}`, {
-      credentials: 'include',
-      // Never let the browser replay a cached API response (a cached 502 from a
-      // sleeping backend would otherwise look permanent).
-      cache: 'no-store',
-      ...options,
-      headers: {
-        ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
-        ...options.headers,
+    response = await fetchWithRetry(
+      `${API_BASE}${path}`,
+      {
+        credentials: 'include',
+        // Never let the browser replay a cached API response (a cached 502 from a
+        // sleeping backend would otherwise look permanent).
+        cache: 'no-store',
+        ...fetchOptions,
+        headers: {
+          ...(fetchOptions.body && !isFormData
+            ? { 'Content-Type': 'application/json' }
+            : {}),
+          ...fetchOptions.headers,
+        },
       },
-    })
+      { onWaiting },
+    )
   } catch (error) {
     if (error?.name === 'AbortError') throw error
     // fetch() only rejects like this when no HTTP response arrived at all
@@ -126,17 +92,18 @@ async function request(path, options = {}) {
   const payload = await response.json().catch(() => ({}))
 
   if (!response.ok) {
+    const wakeUpError = isWakeUpResponse(response)
     const error = new Error(
       payload.message ||
         payload.error ||
-        (RETRYABLE_STATUSES.has(response.status)
+        (wakeUpError
           ? WAKE_UP_MESSAGE
           : response.status === 404
             ? 'The MediGuide API was not found. Check that the backend is deployed and reachable.'
             : 'Something went wrong. Please try again.'),
     )
     error.status = response.status
-    error.isWakeUpError = RETRYABLE_STATUSES.has(response.status)
+    error.isWakeUpError = wakeUpError
     throw error
   }
 
@@ -172,10 +139,18 @@ export const getDoctors = (params = {}) => {
   return request(`/doctors${queryString ? `?${queryString}` : ''}`)
 }
 
-export const registerUser = (data) =>
-  request('/auth/register', { method: 'POST', body: JSON.stringify(data) })
-export const loginUser = (data) =>
-  request('/auth/login', { method: 'POST', body: JSON.stringify(data) })
+export const registerUser = (data, { onWaiting } = {}) =>
+  request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    onWaiting,
+  })
+export const loginUser = (data, { onWaiting } = {}) =>
+  request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    onWaiting,
+  })
 export const requestPasswordReset = (email) =>
   request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
 export const completePasswordReset = (data) =>

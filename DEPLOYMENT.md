@@ -172,7 +172,8 @@ Mitigations in this repo:
   loading page does not count as a successful ping. Check **Actions → Keep API awake** after deploying
   to confirm runs are enabled and green (GitHub schedules are best-effort, not an uptime guarantee).
 - `client/src/api.js` retries proxy 502/503/504 responses, HTML boot pages, and dropped connections
-  with backoff for about two minutes. The login page shows a waiting notice and finishes the same
+  with backoff for about four minutes (covering a Render wake plus a paused Atlas M0 resume).
+  The login page shows a waiting notice and finishes the same
   sign-in attempt automatically. Real JSON API errors, including wrong passwords and rate limits,
   are returned immediately rather than retried.
 - `client/vercel.json` marks `/api/*` as `no-store` so a cached error page can never look permanent.

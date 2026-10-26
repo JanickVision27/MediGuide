@@ -146,8 +146,8 @@ test('never retries caller cancellation', async () => {
   assert.equal(calls, 1)
 })
 
-test('default backoff covers slow cold starts for about two minutes', () => {
+test('default backoff covers slow cold starts for about four minutes', () => {
   const totalDelay = RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0)
-  assert.equal(totalDelay, 119000)
+  assert.equal(totalDelay, 219000)
   assert.ok(Object.isFrozen(RETRY_DELAYS_MS))
 })

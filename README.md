@@ -32,11 +32,130 @@ per-user appointments, medicine lookup, map-based hospital search, and education
 - Prescription image/PDF/text extraction with on-demand Groq details for unmatched medicines
 - Existing medicine AI lookup and chat features
 
+## Architecture
+
+MediGuide is a **decoupled SPA + REST API**: the browser only ever calls the relative `/api`
+path on its own origin, and a proxy forwards it to the Express API (Vite proxy in development,
+Vercel rewrite in production). This keeps the session cookie first-party and avoids CORS
+preflight and mixed-content issues.
+
+### 1. System overview
+
+```mermaid
+flowchart LR
+    User(["👤 User<br/>Browser"])
+
+    subgraph Client["CLIENT — React SPA · client/ · Vercel"]
+        direction TB
+        Pages["Pages<br/>Home · Auth · Profile<br/>Appointments · Hospitals<br/>Medicines · Prescriptions · Chat"]
+        Guards["Route guards<br/>ProtectedRoute · PublicOnlyRoute"]
+        Ctx["AuthContext + api.js<br/>session state · credentialed fetch"]
+        Pages --> Guards --> Ctx
+    end
+
+    Proxy["Same-origin proxy<br/>Dev: Vite /api → :5000<br/>Prod: vercel.json rewrite → Render"]
+
+    subgraph Server["SERVER — Express API · server/ · Render"]
+        direction TB
+        MW["Middleware<br/>CORS allow-list · rate limits<br/>requireAuth (JWT cookie) · Zod"]
+        Routes["Routes + Controllers<br/>auth · appointments · doctors<br/>hospitals · medicines · chat"]
+        Services["Services<br/>email · reminders scheduler<br/>Groq AI lookup / chat · extraction"]
+        MW --> Routes --> Services
+    end
+
+    subgraph Data["DATA"]
+        DB[("MongoDB / Mongoose<br/>User · Doctor · Hospital cache<br/>Appointment · Notification · Photo")]
+        MedData[("Local medicine dataset<br/>server/data/*.json")]
+    end
+
+    subgraph External["EXTERNAL SERVICES (server-side only)"]
+        OSM["OpenStreetMap<br/>Nominatim + Overpass"]
+        GPlaces["Google Places<br/>(optional)"]
+        Groq["Groq AI<br/>(optional)"]
+        Mail["Brevo / Resend<br/>HTTPS email (optional)"]
+    end
+
+    User --> Client
+    Ctx -- "fetch /api/* + HttpOnly cookie" --> Proxy
+    Proxy --> MW
+    Routes --> DB
+    Routes --> MedData
+    Services --> DB
+    Services --> OSM
+    Services --> GPlaces
+    Services --> Groq
+    Services --> Mail
+```
+
+### 2. Request lifecycle (every API call)
+
+```mermaid
+flowchart TD
+    A["Browser: fetch('/api/...', credentials)"] --> B["Proxy forwards to Express<br/>Vite (dev) / Vercel rewrite (prod)"]
+    B --> C["CORS check + rate limiter<br/>(per real IP via trust proxy)"]
+    C --> D{"Protected route?"}
+    D -- "Yes" --> E["requireAuth<br/>verify JWT in HttpOnly cookie → load user"]
+    D -- "No" --> F["Zod validation<br/>auth / profile / appointment bodies"]
+    E --> F
+    F --> G["Controller → Service / Mongoose model<br/>(queries always scoped to session user)"]
+    G --> H{"Needs live data?"}
+    H -- "Hospitals" --> I["Mongo cache (24h) → OSM / Google Places<br/>stale cache labelled on outage"]
+    H -- "AI / Email" --> J["Groq · Brevo/Resend<br/>keys stay on server"]
+    H -- "No" --> K[("MongoDB")]
+    I --> K
+    J --> L["JSON response → React state → UI"]
+    K --> L
+```
+
+### 3. Auth & appointment flow
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant C as React SPA
+    participant A as Express API
+    participant DB as MongoDB
+    participant M as Email / Scheduler
+
+    U->>C: Register / Login
+    C->>A: POST /api/auth/register | login
+    A->>A: Zod validate + bcrypt hash/compare
+    A->>DB: Create / load user
+    A-->>C: Set-Cookie: JWT (HttpOnly, SameSite=Lax)
+    C->>A: GET /api/auth/me (restore session on refresh)
+    A-->>C: Current user → protected workspace
+    U->>C: Book appointment (doctor + hospital)
+    C->>A: POST /api/appointments (cookie attached)
+    A->>A: requireAuth + verify active doctor + hospital snapshot
+    A->>DB: Save appointment (owned by session user)
+    A-->>C: Booking confirmed
+    A->>M: Background reminder scheduler
+    M-->>U: Email (optional) + in-app notification
+```
+
+### Layer guide
+
+| Layer | Location | Responsibility |
+| --- | --- | --- |
+| Pages & guards | `client/src/pages/`, `components/auth/` | UI routes; block/redirect by session state |
+| Client session | `client/src/context/AuthContext.jsx`, `api.js` | Restore user via `/api/auth/me`; all fetches use relative `/api` + credentials |
+| Proxy | `client/vite.config.js` (dev), `client/vercel.json` (prod) | Forward `/api/*` to the API so browser stays same-origin |
+| Middleware | `server/src/middleware/` | CORS allow-list, rate limiting, `requireAuth`, photo-upload checks |
+| Routes → Controllers | `server/src/routes/`, `controllers/` | Map endpoints to handlers (see API table below) |
+| Services | `server/src/services/` | Email, reminder scheduler, Groq AI, medicine extraction, password reset |
+| Models | `server/src/models/` | Mongoose schemas: `User`, `Doctor`, `Hospital`, `Appointment`, `InAppNotification`, `ProfilePhoto` |
+
+**Dev vs. production:** locally Vite (`:5173`) proxies to Express (`:5000`); in production
+Vercel serves the SPA and rewrites `/api/*` to Render. Only the proxy target changes — app code
+is identical. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## Getting started
 
-### 1. Configure the server
+**Prerequisites:** Node.js 18+, MongoDB (local or Atlas).
 
-Copy `.env.example` to `.env` in the repository root and set at least:
+### 1. Configure
+
+Create `.env` in the **repository root** (the API loads it from there):
 
 ```dotenv
 MONGODB_URI=mongodb://127.0.0.1:27017/mediguide
@@ -45,91 +164,59 @@ PORT=5000
 CLIENT_ORIGIN=http://localhost:5173
 ```
 
-Generate a suitable local secret with:
-
 ```bash
+# Generate a JWT secret:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-`JWT_SECRET` is required in production. In development, an ephemeral secret is generated when
-one is absent, but all sessions become invalid when the server restarts. `GROQ_API_KEY` is only
-needed for the optional AI features.
-
-Hospital search works without a Google key through Nominatim/Overpass (OpenStreetMap). Set
-`GOOGLE_PLACES_API_KEY` to prefer Google Places listings and photos. Live provider access requires
-internet connectivity; fresh OpenStreetMap results are cached in MongoDB for 24 hours, and stale
-records are clearly labelled if used during an outage. For a public deployment, set
-`HOSPITAL_DIRECTORY_USER_AGENT` to a value identifying the project and a contact, in line with
-Nominatim's usage policy.
-
-#### Optional email notifications and password reset
-
-To email registered users, first add and verify your domain in the Resend dashboard and complete
-its DNS verification. Then configure the **root `.env`**, not the frontend environment:
-
-```dotenv
-RESEND_API_KEY=re_your_actual_key
-MAIL_FROM="MediGuide <appointments@your-verified-domain.com>"
-APP_URL=http://localhost:5173
-```
-
-Replace the placeholders with your own values. `MAIL_FROM` must be a sender on the verified domain;
-it cannot be an arbitrary user's email address. `APP_URL` is the public frontend origin used in
-password-reset and appointment-reminder links. If `APP_URL` is omitted, the API uses the first valid
-origin in `CLIENT_ORIGIN` (or `CLIENT_URL`). Set `APP_URL` explicitly when the browser origin differs
-from the CORS origin. Restart the API after changing `.env`.
-
-Without `RESEND_API_KEY`, email notifications are skipped. All delivery requires `MAIL_FROM`;
-password resets and reminders also require `APP_URL` or a valid frontend-origin fallback. The API
-never substitutes a shared testing sender. Appointment delivery runs in the background: an email
-failure is logged but does not block or roll back a saved appointment. Password-reset requests
-always return a generic response to avoid revealing whether an account exists. Never commit the
-real key or share it in chat.
-
-### 2. Start the API
+### 2. Run
 
 ```bash
-cd server
-npm ci
-npm run dev
+# Terminal 1 — API (http://localhost:5000, health: GET /api/health)
+cd server && npm ci && npm run dev
+
+# Terminal 2 — Frontend (http://localhost:5173, proxies /api to the API)
+cd client && npm ci && npm run dev
 ```
 
-The API validates its configuration, connects to MongoDB, and upserts the synthetic demo doctors
-before listening on `http://localhost:5000`. Seeding is idempotent, so restarts do not create
-duplicates. Startup stops with a clear error if MongoDB or the production auth configuration is
-invalid. The API also initializes reminder indexes and starts the persistent appointment-reminder
-scheduler. The health check is `GET http://localhost:5000/api/health`.
+On startup the API connects to MongoDB and idempotently seeds the synthetic doctors.
 
-### 3. Start the frontend
+### Optional features (add to root `.env` only if needed)
 
-In another terminal:
+| Feature | Variables | Notes |
+| --- | --- | --- |
+| AI chat / lookup | `GROQ_API_KEY` | App works without it; AI features are skipped |
+| Hospital photos/listings | `GOOGLE_PLACES_API_KEY` | Falls back to free OpenStreetMap search |
+| Email (reset + reminders) | `EMAIL_PROVIDER` (`brevo`\|`resend`), `BREVO_API_KEY` or `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL` | Check status at `GET /api/health/email`; full setup in [DEPLOYMENT.md](./DEPLOYMENT.md) |
+
+### Build & test
 
 ```bash
-cd client
-npm ci
-npm run dev
+cd client && npm run build && npm run preview   # production build
+cd server && npm test                            # server tests (no live DB/email needed)
 ```
 
-Open the Vite URL (normally `http://localhost:5173`). Vite proxies relative `/api` requests to
-the backend, so browser code never needs to call a backend localhost URL directly.
+## Deployment (Vercel frontend + Render API)
 
-### Production build
+The frontend is deployed to Vercel and the API to Render. The browser never calls Render
+directly: it requests `/api/...` on its own origin, and `client/vercel.json` rewrites that path
+to the Render service. Same-origin requests mean no CORS preflight, no third-party cookie and no
+mixed-content failures.
 
-```bash
-cd client
-npm run build
-npm run preview
-```
+| Setting | Frontend (Vercel) | API (Render) |
+| --- | --- | --- |
+| Root directory | `client` | `server` |
+| Build command | `npm run build` | `npm ci` |
+| Start command | (static) | `npm start` |
+| Health check | - | `/api/health` |
 
-### Server tests
+Required API environment variables: `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET` (32+ chars).
+Recommended: `CLIENT_ORIGIN=https://medi-guide-care.vercel.app` and
+`APP_URL=https://medi-guide-care.vercel.app`. Leave `VITE_API_URL` unset on Vercel - the
+production build uses the relative `/api` base on purpose.
 
-```bash
-cd server
-npm test
-```
-
-The tests cover password-reset token behavior, reminder scheduling, model registration, and safe
-email configuration/diagnostics without requiring a live MongoDB connection or sending real email.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full checklist, the request flow diagram and a
+troubleshooting table for "Failed to fetch", blank pages and login-not-sticking issues.
 
 ## Main routes
 
@@ -172,6 +259,7 @@ attribution and the fictional-provider/non-affiliation disclaimers remain visibl
 | `GET /api/hospitals/photo` | Proxy an approved Google Places photo reference |
 | `GET /api/doctors` | List/filter active synthetic doctors |
 | `GET /api/medicines` | Search/filter medicines by `search`, `letter`, and `category` |
+| `GET /api/health/email` | Report the active email provider, key presence and parsed sender (no secrets) |
 
 ## Project structure
 
@@ -193,21 +281,18 @@ server/src/
 └── validators/                  # Zod request validation
 ```
 
-## Security notes
+## Security
 
-- Passwords are hashed with bcrypt and are never returned by the API. Reset tokens are random,
-  hashed at rest, expire after 30 minutes, and are cleared after successful use.
-- Session cookies are `HttpOnly` and `SameSite=Lax`; they are `Secure` in production.
-- Authentication and password-reset requests are rate-limited; login/reset-request responses do
-  not reveal whether an account exists.
-- Profile-photo uploads are session-scoped, limited to 2 MB, and checked against JPG/PNG/WebP
-  signatures rather than trusting the browser's declared file type.
-- Appointment reads and writes are scoped by the verified server-side session.
-- Hospital search/photo endpoints are rate-limited; Google keys remain on the server.
-- Resend keys and patient recipient addresses are used only by the server; notification content
-  is HTML-escaped and recipients come from the authenticated account, not the booking request.
-- Set a strong `JWT_SECRET`, configure `CLIENT_ORIGIN` and `APP_URL`, and use HTTPS in production.
-- This remains an educational demo, not a production healthcare or PHI-storage solution.
+| Area | How it's handled |
+| --- | --- |
+| Passwords & reset | bcrypt-hashed, never returned by the API; reset tokens are random, hashed at rest, single-use, and expire in 30 min. Login/reset responses never reveal whether an account exists. |
+| Sessions | JWT in `HttpOnly`, `SameSite=Lax` cookies (`Secure` in production); prefer the same-origin `/api` proxy over `SameSite=None`. |
+| Access control | All profile/appointment reads & writes are scoped to the verified server-side session user. |
+| Validation & uploads | Zod-validated request bodies; profile photos ≤ 2 MB, verified by JPG/PNG/WebP file signatures (not browser-declared type). |
+| CORS & rate limits | Only allow-listed origins are echoed (never `*` with credentials); auth, reset, and hospital endpoints are rate-limited per real IP (`trust proxy`). |
+| Secrets | `JWT_SECRET`, API/email keys stay server-side only and are never exposed to the browser; email content is HTML-escaped. Use a strong secret + HTTPS in production. |
+
+> Educational demo only — not a production healthcare or PHI-storage solution.
 
 ## License
 

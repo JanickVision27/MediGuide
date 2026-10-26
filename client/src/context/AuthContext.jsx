@@ -9,6 +9,11 @@ import {
   uploadProfilePhoto as apiUploadProfilePhoto,
   updateUserProfile,
 } from '../api.js'
+import {
+  clearProfilePhotoCache,
+  getProfilePhotoKey,
+  primeProfilePhotoCache,
+} from '../utils/profilePhotoCache.js'
 
 const AuthContext = createContext(null)
 
@@ -23,6 +28,7 @@ export function AuthProvider({ children }) {
       setUser(result.user)
       return result.user
     } catch {
+      clearProfilePhotoCache()
       setUser(null)
       return null
     } finally {
@@ -36,12 +42,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const result = await apiLogin(credentials)
+    clearProfilePhotoCache()
     setUser(result.user)
     return result.user
   }, [])
 
   const register = useCallback(async (details) => {
     const result = await apiRegister(details)
+    clearProfilePhotoCache()
     setUser(result.user)
     return result.user
   }, [])
@@ -50,6 +58,7 @@ export function AuthProvider({ children }) {
     try {
       await apiLogout()
     } finally {
+      clearProfilePhotoCache()
       setUser(null)
     }
   }, [])
@@ -62,6 +71,9 @@ export function AuthProvider({ children }) {
 
   const saveProfilePhoto = useCallback(async (file) => {
     const result = await apiUploadProfilePhoto(file)
+    // The uploaded file is already available locally, so show it immediately
+    // instead of downloading the same image again after saving.
+    primeProfilePhotoCache(getProfilePhotoKey(result.user), file)
     setUser(result.user)
     setProfilePhotoVersion((version) => version + 1)
     return result.user
@@ -69,6 +81,7 @@ export function AuthProvider({ children }) {
 
   const removeProfilePhoto = useCallback(async () => {
     const result = await apiDeleteProfilePhoto()
+    clearProfilePhotoCache()
     setUser(result.user)
     setProfilePhotoVersion((version) => version + 1)
     return result.user

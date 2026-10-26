@@ -443,28 +443,6 @@
   overflow-wrap: anywhere;
 }
 
-.medical-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  margin: 18px 0 0;
-  padding: 12px 13px;
-  border: 1px solid #d9eafb;
-  border-radius: 10px;
-  background: #f1f8ff;
-  color: #4c6680;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.medical-note svg {
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--profile-blue);
-}
-
 .emergency-card {
   margin-top: 22px;
 }

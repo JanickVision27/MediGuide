@@ -11,6 +11,7 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [isWakeUpError, setIsWakeUpError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWaitingForServer, setIsWaitingForServer] = useState(false)
 
@@ -18,9 +19,9 @@ export default function Login() {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault()
+  async function submitLogin() {
     setError('')
+    setIsWakeUpError(false)
     setIsWaitingForServer(false)
     setIsSubmitting(true)
 
@@ -37,10 +38,18 @@ export default function Login() {
       navigate(isInternalDestination ? destination : '/profile', { replace: true })
     } catch (err) {
       setError(err.message || 'Unable to sign in right now.')
+      // A cold start that outran the retry budget has usually warmed the
+      // container by the time this renders, so one tap typically succeeds.
+      setIsWakeUpError(Boolean(err.isWakeUpError))
     } finally {
       setIsWaitingForServer(false)
       setIsSubmitting(false)
     }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    void submitLogin()
   }
 
   return (
@@ -87,7 +96,17 @@ export default function Login() {
 
           {error && (
             <div role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              {error}
+              <p>{error}</p>
+              {isWakeUpError && (
+                <button
+                  type="button"
+                  onClick={() => void submitLogin()}
+                  disabled={isSubmitting}
+                  className="mt-3 inline-flex items-center rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? 'Retrying…' : 'Retry now'}
+                </button>
+              )}
             </div>
           )}
 

@@ -1,0 +1,47 @@
+# Render Blueprint for the MediGuide API.
+# In the Render dashboard: New + -> Blueprint, pick this repository. Existing
+# manually-created services can instead match these settings by hand.
+#
+# Region: Singapore is the closest free-tier region to India. Keep MongoDB Atlas
+# in the SAME region (AWS ap-southeast-1) so every query stays local instead of
+# travelling to the US and back.
+services:
+  - type: web
+    name: mediguide-api
+    runtime: node
+    rootDir: server
+    plan: free # upgrade to "starter" to remove cold starts entirely
+    region: singapore # alternatives: frankfurt, ohio, oregon
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      # Secrets and deployment-specific values are entered in the Render
+      # dashboard (Environment tab); sync:false means they are not stored here.
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: APP_URL
+        sync: false
+      # Optional email / AI / hospital features
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: GROQ_API
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false

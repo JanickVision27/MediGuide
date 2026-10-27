@@ -3,9 +3,12 @@
 // cold start instead of making the visitor submit the form again.
 export const RETRYABLE_STATUSES = new Set([502, 503, 504])
 
-// Roughly two minutes of backoff, excluding the time spent on each request.
+// Roughly 3.5-4 minutes of backoff, excluding the time spent on each request.
 // The short initial delays make a normal cold start feel responsive; the longer
-// final delays cover a slow start without hammering the API.
+// final delays cover a slow start without hammering the API. The tail reaches
+// ~4 minutes because a Render free-tier container wake (30-60s) can stack with
+// a paused MongoDB Atlas M0 cluster resuming (1-3 min) before the first JSON
+// response is possible.
 export const RETRY_DELAYS_MS = Object.freeze([
   1000,
   2000,
@@ -17,7 +20,10 @@ export const RETRY_DELAYS_MS = Object.freeze([
   15000,
   20000,
   20000,
-  20000,
+  30000,
+  30000,
+  30000,
+  30000,
 ])
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))

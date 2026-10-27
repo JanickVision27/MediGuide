@@ -6,3 +6,6 @@
 .env.production.local
 mrag.ipynb
 node_modules/
+
+# Large raw dataset - not used at runtime (server uses server/data/medicines_cleaned.json)
+medicine_dataset.csv
